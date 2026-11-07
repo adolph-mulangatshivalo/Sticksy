@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     python3 \
     python3-pip \
+    python-is-python3 \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

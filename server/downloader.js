@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+const PYTHON_BIN = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+
 /**
  * Clean URL from input string (handling whitespace, share sheet text, quotes).
  */
@@ -357,7 +359,7 @@ try:
 except Exception as e:
     print(json.dumps({'error': str(e)}))
 `;
-    const proc = spawn('python', ['-c', pyScript, url]);
+    const proc = spawn(PYTHON_BIN, ['-c', pyScript, url]);
     let out = '';
     proc.stdout.on('data', d => { out += d.toString(); });
     proc.on('close', () => {
@@ -582,7 +584,7 @@ export async function inspectMedia(rawUrl) {
 
   // 9. Execute yt-dlp metadata dump as fallback for YouTube, Facebook, Reddit, etc.
   return new Promise((resolve, reject) => {
-    const proc = spawn('python', ['-m', 'yt_dlp', '--js-runtimes', 'node', '--dump-single-json', '--no-warnings', '--no-playlist', url]);
+    const proc = spawn(PYTHON_BIN, ['-m', 'yt_dlp', '--js-runtimes', 'node', '--dump-single-json', '--no-warnings', '--no-playlist', url]);
     let stdout = '';
     let stderr = '';
 
@@ -835,7 +837,7 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     ];
 
     await new Promise((resolve, reject) => {
-      const proc = spawn('python', args);
+      const proc = spawn(PYTHON_BIN, args);
       let stderr = '';
       proc.stderr.on('data', (d) => { stderr += d.toString(); });
       proc.on('close', (code) => {

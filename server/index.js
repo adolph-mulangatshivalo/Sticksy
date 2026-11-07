@@ -702,7 +702,7 @@ app.get('/api/sticker/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`=========================================`);
   console.log(`🚀 Sticksy Server running on http://localhost:${PORT}`);
   console.log(`⚡ Every link deserves a sticker.`);

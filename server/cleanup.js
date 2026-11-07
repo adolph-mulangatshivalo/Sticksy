@@ -15,6 +15,7 @@ export function startPeriodicCleanup(tempDir, maxAgeMs = 10 * 60 * 1000, interva
       const now = Date.now();
       const files = fs.readdirSync(tempDir);
       for (const file of files) {
+        if (file === '.gitkeep') continue;
         const fullPath = path.join(tempDir, file);
         try {
           const stats = fs.statSync(fullPath);
