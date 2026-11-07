@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sticksy Icon Preview</title>
+  <style>
+    body {
+      background: #222;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+      padding: 40px;
+    }
+    .grid {
+      display: flex;
+      gap: 30px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .icon-preview {
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .rounded {
+      border-radius: 22%;
+      overflow: hidden;
+    }
+    .circle {
+      border-radius: 50%;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sticksy PWA Icon Preview</h1>
+  
+  <div class="grid">
+    <div class="card">
+      <h3>Standard 512×512 (Squircle)</h3>
+      <div id="iconContainer" class="icon-preview rounded" style="width: 256px; height: 256px;"></div>
+    </div>
+    
+    <div class="card">
+      <h3>Maskable Safe Zone (Circle Android)</h3>
+      <div id="maskableContainer" class="icon-preview circle" style="width: 256px; height: 256px;"></div>
+    </div>
+    
+    <div class="card">
+      <h3>192×192 Preview</h3>
+      <div id="smallContainer" class="icon-preview rounded" style="width: 128px; height: 128px;"></div>
+    </div>
+    
+    <div class="card">
+      <h3>Favicon / App Switcher (48×48)</h3>
+      <div id="miniContainer" class="icon-preview rounded" style="width: 48px; height: 48px;"></div>
+    </div>
+  </div>
+
+  <script>
+    const svgIcon = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+      <defs>
+        <filter id="neoShadow" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="16" dy="16" stdDeviation="0" flood-color="#111111" flood-opacity="1" />
+        </filter>
+        <filter id="neoShadowSm" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="10" dy="10" stdDeviation="0" flood-color="#111111" flood-opacity="1" />
+        </filter>
+      </defs>
+
+      <!-- Vibrant Yellow Neo-Brutalist Background -->
+      <rect width="512" height="512" fill="#FFD60A" />
+
+      <!-- Subtle Dot Grid Matrix for Depth -->
+      <pattern id="dotGrid" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+        <circle cx="16" cy="16" r="2.5" fill="#111111" opacity="0.12" />
+      </pattern>
+      <rect width="512" height="512" fill="url(#dotGrid)" />
+
+      <!-- Outer Heavy Neo-Brutalist Border -->
+      <rect x="12" y="12" width="488" height="488" rx="88" fill="none" stroke="#111111" stroke-width="24" />
+
+      <!-- Floating Playful Accents in Corners -->
+      <!-- Top Left Sparkle -->
+      <path d="M 90 70 Q 110 90 130 90 Q 110 90 90 110 Q 110 90 90 70 Z" fill="#FF4365" stroke="#111111" stroke-width="6" />
+      <!-- Top Right Star -->
+      <polygon points="415,65 423,83 443,85 428,99 432,118 415,108 398,118 402,99 387,85 407,83" fill="#25D366" stroke="#111111" stroke-width="6" />
+      <!-- Bottom Left Pill -->
+      <rect x="75" y="410" width="45" height="24" rx="12" fill="#00F0FF" stroke="#111111" stroke-width="6" />
+      <!-- Bottom Right Sparkle -->
+      <path d="M 410 400 L 430 400 M 420 390 L 420 410" stroke="#111111" stroke-width="8" stroke-linecap="round" />
+
+      <!-- Main Center Element: Tilted Neo-Brutalist Sticker Card -->
+      <g transform="translate(256, 256) rotate(-5) translate(-256, -256)">
+        
+        <!-- Sticker Hard Shadow -->
+        <path d="M 120 120 L 392 120 L 392 312 L 312 392 L 120 392 Z" fill="#111111" transform="translate(18, 18)" />
+
+        <!-- Sticker White Base with Folded Corner -->
+        <path d="M 120 120 L 392 120 L 392 312 L 312 392 L 120 392 Z" fill="#FFFFFF" stroke="#111111" stroke-width="16" stroke-linejoin="round" />
+
+        <!-- Peeled Corner Flap (Vibrant Coral #FF4365) -->
+        <path d="M 392 312 L 312 392 L 312 312 Z" fill="#FF4365" stroke="#111111" stroke-width="16" stroke-linejoin="round" />
+
+        <!-- Inner WhatsApp Green Badge -->
+        <circle cx="230" cy="230" r="82" fill="#25D366" stroke="#111111" stroke-width="14" />
+
+        <!-- Iconic Sticksy Star & Bold "S" on the badge -->
+        <!-- Center Star in Badge -->
+        <polygon points="230,175 237,194 257,196 242,210 246,230 230,220 214,230 218,210 203,196 223,194" fill="#FFD60A" stroke="#111111" stroke-width="8" stroke-linejoin="round" />
+
+        <!-- Bold Stylized "S" / Sticker Text -->
+        <text x="230" y="285" font-family="'Space Grotesk', 'Plus Jakarta Sans', Arial, sans-serif" font-size="52" font-weight="900" fill="#111111" text-anchor="middle" letter-spacing="-1">STICK</text>
+        
+        <!-- Tiny WhatsApp check badge or sparkle on sticker -->
+        <circle cx="330" cy="180" r="22" fill="#FFD60A" stroke="#111111" stroke-width="8" />
+        <path d="M 322 180 L 328 186 L 338 174" fill="none" stroke="#111111" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+      </g>
+    </svg>
+    `;
+
+    document.getElementById('iconContainer').innerHTML = svgIcon;
+    document.getElementById('maskableContainer').innerHTML = svgIcon;
+    document.getElementById('smallContainer').innerHTML = svgIcon;
+    document.getElementById('miniContainer').innerHTML = svgIcon;
+  </script>
+</body>
+</html>
+

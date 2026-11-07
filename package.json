@@ -1,0 +1,23 @@
+{
+  "name": "sticksy-app",
+  "version": "1.0.0",
+  "description": "Sticksy — Every link deserves a sticker. Universal Media to WhatsApp Sticker Maker & Bot",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "cors": "^2.8.6",
+    "cropperjs": "^1.6.2",
+    "express": "^4.22.3",
+    "multer": "^1.4.5-lts.1",
+    "node-webp": "^1.0.0",
+    "node-webpmux": "^3.2.1",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
+    "wa-sticker-formatter": "^4.4.4"
+  }
+}
