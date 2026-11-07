@@ -700,6 +700,21 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     return outPath;
   }
 
+  // 1b. Fast check if URL is a direct media content-type (e.g. Unsplash, CDNs without file extension)
+  try {
+    const headResp = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    const ct = (headResp.headers.get('content-type') || '').toLowerCase();
+    if (ct.startsWith('image/') || ct.startsWith('video/')) {
+      const ext = ct.includes('png') ? 'png' : (ct.includes('gif') ? 'gif' : (ct.includes('webp') ? 'webp' : (ct.includes('mp4') ? 'mp4' : 'jpg')));
+      const outPath = path.join(tempDir, `${filePrefix}_input.${ext}`);
+      await downloadDirectMedia(url, outPath);
+      return outPath;
+    }
+  } catch (_) {}
+
   // 2. Fast Giphy direct download
   if (platform.id === 'giphy') {
     const giphyData = await extractGiphyDirect(url);
