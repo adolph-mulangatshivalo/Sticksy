@@ -225,6 +225,167 @@ export async function extractInstagramDirect(url) {
 }
 
 /**
+ * Fast & reliable Facebook extractor for Reels, Videos, Watch, and mobile share links.
+ * Uses SaveF high-speed API with direct Meta CDN MP4/JPEG token decoding,
+ * with fallbacks to direct page regex and OpenGraph.
+ */
+export async function extractFacebookDirect(url) {
+  try {
+    let targetUrl = url;
+
+    // Follow redirects for fb.watch or mobile share links (/share/r/, /share/v/)
+    if (targetUrl.includes('fb.watch') || targetUrl.includes('/share/')) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        const headResp = await fetch(targetUrl, {
+          method: 'HEAD',
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          }
+        });
+        clearTimeout(timeout);
+        if (headResp.url && !headResp.url.includes('login.php')) {
+          targetUrl = headResp.url;
+        }
+      } catch (_) {}
+    }
+
+    // 1. High-speed SaveF API (bypasses datacenter IP blocks, extracts direct fbcdn URLs)
+    const res = await fetch('https://savef.app/api/ajaxSearch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Origin': 'https://savef.app',
+        'Referer': 'https://savef.app/'
+      },
+      body: new URLSearchParams({ q: targetUrl, t: 'media', lang: 'en' }).toString()
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.data) {
+        const html = json.data;
+
+        // 1a. Direct embedded <video> tag
+        const videoTagMatch = html.match(/<video[^>]+src="([^"]+)"/i);
+        let videoUrl = videoTagMatch ? videoTagMatch[1].replace(/&amp;/g, '&') : null;
+
+        // 1b. Download buttons (JWT tokens or direct links)
+        const downloadMatches = [...html.matchAll(/href="([^"]+)"[^>]*title="([^"]*)"/gi)];
+        let hdVideoUrl = null;
+        let sdVideoUrl = null;
+
+        for (const m of downloadMatches) {
+          const href = m[1];
+          const title = (m[2] || '').toLowerCase();
+          const decoded = decodeJwtUrl(href) || href;
+          if (decoded && (decoded.includes('.mp4') || decoded.includes('fbcdn.net'))) {
+            if (title.includes('hd') || title.includes('720') || title.includes('1080')) {
+              if (!hdVideoUrl) hdVideoUrl = decoded;
+            } else if (title.includes('sd') || title.includes('360')) {
+              if (!sdVideoUrl) sdVideoUrl = decoded;
+            } else if (!videoUrl) {
+              videoUrl = decoded;
+            }
+          }
+        }
+
+        // Fallback: search any token link inside table
+        if (!videoUrl && !hdVideoUrl && !sdVideoUrl) {
+          const tokenMatch = html.match(/href="([^"]*download\?token=[^"]+)"/i);
+          if (tokenMatch) {
+            const decoded = decodeJwtUrl(tokenMatch[1]);
+            if (decoded) videoUrl = decoded;
+          }
+        }
+
+        const finalVideoUrl = hdVideoUrl || sdVideoUrl || videoUrl;
+
+        // Thumbnail extraction
+        const thumbImgMatch = html.match(/<img[^>]+src="([^"]+)"/i) || html.match(/poster="([^"]+)"/i);
+        let thumbnail = thumbImgMatch ? thumbImgMatch[1].replace(/&amp;/g, '&') : null;
+        if (thumbnail && thumbnail.includes('token=')) {
+          thumbnail = decodeJwtUrl(thumbnail) || thumbnail;
+        }
+
+        // Duration extraction (e.g. <p>1:14</p>)
+        const durMatch = html.match(/<p>(\d+):(\d+)<\/p>/i);
+        let duration = 5;
+        if (durMatch) {
+          duration = parseInt(durMatch[1], 10) * 60 + parseInt(durMatch[2], 10);
+        }
+
+        const titleMatch = html.match(/<h3[^>]*>([^<]+)<\/h3>/i);
+        const title = (titleMatch && titleMatch[1].trim()) || 'Facebook Video';
+        const isVideo = Boolean(finalVideoUrl);
+
+        if (finalVideoUrl || thumbnail) {
+          return {
+            title,
+            thumbnail: thumbnail || finalVideoUrl,
+            videoUrl: finalVideoUrl,
+            type: isVideo ? 'video' : 'image',
+            duration: isVideo ? duration : null,
+            platform: { id: 'facebook', name: 'Facebook', icon: '📘' }
+          };
+        }
+      }
+    }
+  } catch (e) {
+    // continue to direct scrape fallback
+  }
+
+  // 2. Direct HTML regex fallback
+  try {
+    const directRes = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+      }
+    });
+    if (directRes.ok) {
+      let data = await directRes.text();
+      data = data.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+      const sdMatch =
+        data.match(/"browser_native_sd_url":"(.*?)"/) ||
+        data.match(/"playable_url":"(.*?)"/) ||
+        data.match(/sd_src\s*:\s*"([^"]*)"/);
+
+      const hdMatch =
+        data.match(/"browser_native_hd_url":"(.*?)"/) ||
+        data.match(/"playable_url_quality_hd":"(.*?)"/) ||
+        data.match(/hd_src\s*:\s*"([^"]*)"/);
+
+      const ogVideo = data.match(/property="og:video(?::secure_url)?"\s+content="([^"]+)"/i);
+      const ogImg = data.match(/property="og:image(?::secure_url)?"\s+content="([^"]+)"/i);
+      const titleMatch = data.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i) || data.match(/<title>([^<]+)<\/title>/i);
+
+      const unesc = (s) => s.replace(/\\\//g, '/').replace(/\\u0025/g, '%');
+      const vUrl = (hdMatch && unesc(hdMatch[1])) || (sdMatch && unesc(sdMatch[1])) || (ogVideo && ogVideo[1]) || null;
+      const thumb = (ogImg && ogImg[1]) || vUrl;
+
+      if (vUrl || thumb) {
+        return {
+          title: (titleMatch && titleMatch[1].trim()) || 'Facebook Video',
+          thumbnail: thumb,
+          videoUrl: vUrl,
+          type: vUrl ? 'video' : 'image',
+          duration: 5,
+          platform: { id: 'facebook', name: 'Facebook', icon: '📘' }
+        };
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+/**
  * Fast Twitter / X extractor using FxTwitter API.
  */
 export async function extractTwitterDirect(url) {
@@ -543,6 +704,12 @@ export async function inspectMedia(rawUrl) {
     if (igData) return igData;
   }
 
+  // 5b. Fast Facebook extractor (Reels, Videos, Watch, Share)
+  if (platform.id === 'facebook') {
+    const fbData = await extractFacebookDirect(url);
+    if (fbData) return fbData;
+  }
+
   // 6. Fast X / Twitter extractor
   if (platform.id === 'twitter') {
     const twitterData = await extractTwitterDirect(url);
@@ -670,6 +837,15 @@ export async function inspectMedia(rawUrl) {
         }
       }
 
+      // 9b. If yt-dlp failed, check Facebook direct fallback
+      if (platform.id === 'facebook') {
+        const fbData = await extractFacebookDirect(url);
+        if (fbData) {
+          resolve(fbData);
+          return;
+        }
+      }
+
       // 10. Universal OpenGraph fallback (works for any web page, article, Facebook post, or Reddit post)
       const ogData = await extractOpenGraphDirect(url);
       if (ogData) {
@@ -762,6 +938,22 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       } else if (igData.thumbnail) {
         const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
         await downloadDirectMedia(igData.thumbnail, outPath);
+        return outPath;
+      }
+    }
+  }
+
+  // 5b. Fast Facebook download (Reels, Videos, Watch, Share)
+  if (platform.id === 'facebook') {
+    const fbData = await extractFacebookDirect(url);
+    if (fbData) {
+      if (fbData.videoUrl) {
+        const outPath = path.join(tempDir, `${filePrefix}_input.mp4`);
+        await downloadDirectMedia(fbData.videoUrl, outPath);
+        return outPath;
+      } else if (fbData.thumbnail) {
+        const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
+        await downloadDirectMedia(fbData.thumbnail, outPath);
         return outPath;
       }
     }
