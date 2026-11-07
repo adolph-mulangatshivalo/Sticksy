@@ -1,71 +1,164 @@
-# StickerSync — Universal Media to WhatsApp Sticker App
+# Sticksy
 
-> **100% Free • Unlimited Public Scale • Zero WhatsApp Banning (Method 1)**
+> Turn any social media link or file into a WhatsApp sticker in seconds.
 
-Turn any link from **TikTok, Pinterest, Instagram, Facebook, YouTube Shorts, X (Twitter)** or local photo/video into a WhatsApp animated or static sticker in seconds.
+**Live Site:** [https://sticksy-kw3v.onrender.com](https://sticksy-kw3v.onrender.com)
 
----
-
-## 🌟 Why Method 1 Works for Thousands of Users at $0 Cost
-
-Traditional WhatsApp bots that blast messages to users from a single phone number get banned by Meta within 24-48 hours. 
-
-**Method 1 solves this completely:**
-1. The user pastes any link into the web app (on mobile or desktop).
-2. The server extracts the media using `yt-dlp` and compresses it using `FFmpeg` to **512×512 WebP** with WhatsApp-compliant EXIF chunks (< 500 KB for animated, < 100 KB for static).
-3. The user taps the green **"Send / Add to WhatsApp"** button.
-4. The mobile device's native Web Share API opens WhatsApp directly into the chat or "Message Yourself".
-5. In WhatsApp, the user taps the sticker and hits **"Add to Favorites"** ⭐.
-
-* **Zero Ban Risk:** No automated bot phone number for Meta to detect or flag.
-* **100% Free Forever:** No paid WhatsApp Business APIs or burner SIM cards.
-* **Infinite Scalability:** 10,000+ daily users can generate stickers without hitting rate limits.
+Sticksy is a free web app that turns videos, photos, and GIFs into WhatsApp stickers. Paste a link from your favorite social media platform or upload a file from your phone or computer. Trim the exact part you want, crop it, and send it straight to WhatsApp.
 
 ---
 
-## 🚀 Running Locally
+## Features
 
-### 1. Requirements
-* **Node.js** (v18+)
-* **Python 3** with `yt-dlp` (`pip install yt-dlp`)
-* **FFmpeg** (installed and added to your system PATH)
+- **Link to Sticker:** Works with links from Facebook, Instagram, TikTok, YouTube Shorts, X (Twitter), Pinterest, GIPHY, and Tenor.
+- **Direct File Upload:** Upload your own videos, GIFs, or photos (`.mp4`, `.mov`, `.webm`, `.gif`, `.png`, `.jpg`, `.webp`).
+- **Video Trimmer:** Use the slider to pick the exact start time and length you want.
+- **Filmstrip Preview:** See video thumbnails in the timeline as you drag the slider.
+- **Crop & Adjust:** Fit the full video or crop it into a 1:1 square. Adjust speed, quality, and frames per second.
+- **WhatsApp Ready:** Automatically compressed to stay under WhatsApp limits (< 500 KB for animated stickers, < 100 KB for static stickers).
+- **One-Tap Sharing:** Use the green "Send to WhatsApp" button to open WhatsApp and save the sticker to your favorites.
+- **Mobile Friendly & Installable:** Works as a Progressive Web App (PWA). You can install it on your phone home screen and share links to it directly from other apps.
+- **Privacy First:** No sign-up required. Your files are temporary and get deleted automatically after 10 minutes.
 
-### 2. Start the Server
+---
+
+## Supported Platforms
+
+| Platform | Supported Content |
+| :--- | :--- |
+| **Facebook** | Reels, Videos, Watch, mobile share links (`fb.watch`, `/share/r/`, `/share/v/`) |
+| **Instagram** | Reels, Posts, Videos, mobile links |
+| **TikTok** | Videos (clean with no watermark), photo slideshows |
+| **YouTube** | Shorts, standard videos |
+| **X / Twitter** | Video clips, GIFs, photos |
+| **Pinterest** | Video pins, photo pins |
+| **GIPHY & Tenor** | Animated GIFs and video clips |
+| **Direct Media** | Direct web links to `.mp4`, `.gif`, `.png`, `.jpg`, `.webp` |
+| **Device Upload** | Files from your phone gallery, camera, or desktop |
+
+---
+
+## How to Use It
+
+1. **Paste a link or upload a file.** Sticksy shows a live preview right away.
+2. **Trim and crop.** Pick your favorite few seconds, choose your crop, and adjust speed or quality if needed.
+3. **Create and save.** Tap **Create Sticker**. Once ready, tap **Send to WhatsApp** or **Download**.
+4. **In WhatsApp:** Tap the sticker in your chat and tap **Add to Favorites** so you can use it anytime.
+
+---
+
+## Running Locally
+
+### Prerequisites
+
+Make sure you have these installed on your computer:
+
+- **Node.js** (version 18 or newer)
+- **Python 3**
+- **FFmpeg** (installed and added to your system PATH)
+- **yt-dlp** (`pip install yt-dlp`)
+
+### Quick Start
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/adolph-mulangatshivalo/Sticksy.git
+   cd Sticksy
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Start the server:
+   ```bash
+   npm start
+   ```
+
+4. Open your browser and go to:
+   ```
+   http://localhost:3000
+   ```
+
+---
+
+## Running with Docker
+
+You can build and run Sticksy inside a Docker container without manually installing FFmpeg or Python on your host machine:
+
 ```bash
-npm install
-npm start
+# Build the image
+docker build -t sticksy .
+
+# Run the container
+docker run -p 3000:3000 sticksy
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+Open `http://localhost:3000` in your browser.
 
 ---
 
-## ☁️ 100% Free Cloud Deployment Options
+## Deploying to the Cloud for Free
 
-You can host this backend 24/7 without paying a single cent:
+Sticksy is ready to run on any cloud host that supports Docker or Node.js.
 
-### Option A: Hugging Face Spaces (Easiest — No Credit Card Needed)
-1. Create a free account on [huggingface.co](https://huggingface.co).
-2. Click **New Space** ➔ Name it `stickersync` ➔ Select **Docker** as the SDK.
-3. Push or upload this repository (`Dockerfile`, `package.json`, `server/`, `public/`).
-4. Hugging Face builds and deploys your Docker container with **2 vCPUs and 16 GB of RAM completely free** with a permanent HTTPS web URL!
+### Deploying on Render (Free)
 
-### Option B: Render.com
-1. Create a free account on [render.com](https://render.com).
-2. Click **New Web Service** ➔ Connect your GitHub repository.
-3. Select **Docker** environment.
-4. Set Port to `3000` and deploy.
+1. Fork or push this repository to your GitHub account.
+2. Sign in to [Render](https://render.com) and click **New +** ➔ **Web Service**.
+3. Connect your GitHub repository.
+4. Select **Docker** as the environment.
+5. Set the Port to `3000`.
+6. Click **Deploy Web Service**.
 
-### Option C: Oracle Cloud Always-Free Tier (Highest Performance)
-* Oracle gives you 4 ARM OCPUs and 24 GB of RAM permanently for free.
-* You can run this Docker container using Docker Compose and handle thousands of simultaneous sticker conversions without breaking a sweat.
+### Keeping the Free Server Awake 24/7
+
+Free hosting platforms like Render put services to sleep after 15 minutes of inactivity. Sticksy includes a built-in health check route at `/health`.
+
+To keep your site awake without paying anything:
+1. Create a free account at [UptimeRobot](https://uptimerobot.com).
+2. Click **Add New Monitor**.
+3. Choose **HTTP(s)** monitor type.
+4. Enter your URL: `https://your-app-name.onrender.com/health`
+5. Set the check interval to **5 or 8 minutes**.
+6. Save. UptimeRobot will ping the app regularly so it never sleeps.
 
 ---
 
-## 🛠️ Tech Stack & Key Files
-* `server/index.js`: Express server & REST API (`/api/inspect`, `/api/create-sticker`, `/api/upload-sticker`, `/api/sticker/:id`).
-* `server/downloader.js`: Multi-platform media extractor powered by `yt-dlp` and direct fallback handlers.
-* `server/converter.js`: FFmpeg WebP optimization pipeline with multi-pass compression to stay strictly under WhatsApp's 500KB animated limit.
-* `server/exif.js`: Injects WhatsApp sticker metadata into WebP binary headers.
-* `server/cleanup.js`: Auto-deletes temp files older than 10 minutes to prevent disk exhaustion.
-* `public/`: Sleek, mobile-first responsive UI with native Web Share API integration.
+## Project Structure
 
+```
+├── public/                 # Frontend assets (HTML, CSS, JS, PWA icons)
+│   ├── index.html          # Main user interface
+│   ├── style.css           # Neo-brutalist responsive styling
+│   ├── app.js              # Client logic, trimming, Cropper.js, share handler
+│   ├── sw.js               # Service worker for offline caching and PWA installs
+│   └── manifest.json       # Web app manifest with share-target integration
+├── server/                 # Backend API
+│   ├── index.js            # Express server, routes, and proxies
+│   ├── downloader.js       # Fast extractors for Facebook, Instagram, TikTok, etc.
+│   ├── converter.js        # FFmpeg pipeline for GIF and WebP stickers
+│   ├── exif.js             # WhatsApp sticker metadata injector
+│   └── cleanup.js          # Automatically deletes old temporary files
+├── Dockerfile              # Container configuration with FFmpeg, Python, and Node
+└── package.json            # Project dependencies and start scripts
+```
+
+---
+
+## Privacy & Security
+
+- **No accounts or logins:** You do not need to sign in or share personal information.
+- **Zero permanent storage:** Uploaded and converted files are stored in a temporary folder and permanently deleted after 10 minutes.
+- **No API keys required:** The app runs without relying on paid third-party API keys.
+
+---
+
+## Author
+
+Created by **Adolph** ([adolphusmulanga723@gmail.com](mailto:adolphusmulanga723@gmail.com)).
+
+## License
+
+This project is licensed under the MIT License.
