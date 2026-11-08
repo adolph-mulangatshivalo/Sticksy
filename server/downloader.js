@@ -224,6 +224,40 @@ export async function extractInstagramDirect(url) {
   return null;
 }
 
+let cachedVisitorData = null;
+let visitorDataTime = 0;
+
+/**
+ * Dynamically fetch a valid YouTube visitor data token to bypass datacenter BotGuard IP restrictions.
+ */
+export async function getYouTubeVisitorData() {
+  if (cachedVisitorData && (Date.now() - visitorDataTime < 1000 * 60 * 30)) {
+    return cachedVisitorData;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch('https://www.youtube.com/', {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    clearTimeout(timer);
+    const html = await res.text();
+    const m = html.match(/visitorData":"([^"]+)"/);
+    if (m && m[1]) {
+      cachedVisitorData = decodeURIComponent(m[1]);
+      visitorDataTime = Date.now();
+      return cachedVisitorData;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return null;
+}
+
 /**
  * Fast & reliable YouTube extractor for Shorts, regular videos, and mobile links.
  * Bypasses datacenter bot blocks using mobile player clients and oEmbed API.
@@ -253,23 +287,35 @@ export async function extractYouTubeDirect(rawUrl) {
 
     const thumbnail = `https://i.ytimg.com/vi/${videoId}/hq720.jpg`;
 
-    // 2. Fetch progressive stream URL using embedded player client (bypasses bot detection)
+    // 2. Fetch progressive stream URL using dynamic visitor token & embedded player clients
+    const visitorData = await getYouTubeVisitorData();
     const streamUrl = await new Promise((resolve) => {
-      const proc = spawn(PYTHON_BIN, [
+      const args = [
         '-m', 'yt_dlp',
         '--js-runtimes', 'node',
-        '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
         '--no-warnings',
-        '--no-playlist',
-        '-g',
-        '-f', 'bv*+ba/b',
-        canonicalUrl
-      ]);
+        '--no-playlist'
+      ];
+      if (visitorData) {
+        args.push('--extractor-args', `youtube:player_client=android_embedded,tv_embedded;visitor_data=${visitorData}`);
+      } else {
+        args.push('--extractor-args', 'youtube:player_client=android_embedded,tv_embedded');
+      }
+      if (process.env.YT_COOKIES) {
+        const cookieFile = path.resolve('temp', 'yt_cookies.txt');
+        try {
+          if (!fs.existsSync(cookieFile)) fs.writeFileSync(cookieFile, process.env.YT_COOKIES);
+          args.push('--cookies', cookieFile);
+        } catch (_) {}
+      }
+      args.push('-g', '-f', 'bv*+ba/b', canonicalUrl);
+
+      const proc = spawn(PYTHON_BIN, args);
       let out = '';
       const timer = setTimeout(() => {
         try { proc.kill(); } catch (_) {}
         resolve(null);
-      }, 6000);
+      }, 7000);
 
       proc.stdout.on('data', (d) => { out += d.toString(); });
       proc.on('close', (code) => {
@@ -922,16 +968,25 @@ export async function inspectMedia(rawUrl) {
   }
 
   // 9. Execute yt-dlp metadata dump as fallback for YouTube, Facebook, Reddit, etc.
-  return new Promise((resolve, reject) => {
-    const proc = spawn(PYTHON_BIN, [
+  return new Promise(async (resolve, reject) => {
+    const visitorData = platform.id === 'youtube' ? await getYouTubeVisitorData() : null;
+    const args = [
       '-m', 'yt_dlp',
       '--js-runtimes', 'node',
-      '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
       '--dump-single-json',
       '--no-warnings',
-      '--no-playlist',
-      url
-    ]);
+      '--no-playlist'
+    ];
+    if (platform.id === 'youtube') {
+      if (visitorData) {
+        args.push('--extractor-args', `youtube:player_client=android_embedded,tv_embedded;visitor_data=${visitorData}`);
+      } else {
+        args.push('--extractor-args', 'youtube:player_client=android_embedded,tv_embedded');
+      }
+    }
+    args.push(url);
+
+    const proc = spawn(PYTHON_BIN, args);
     let stdout = '';
     let stderr = '';
 
@@ -1207,17 +1262,30 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     const match = url.match(/(?:v=|shorts\/|youtu\.be\/|embed\/|v\/|watch\?v=|\/e\/)([a-zA-Z0-9_-]{11})/i);
     const targetUrl = match ? `https://www.youtube.com/watch?v=${match[1]}` : url;
     const outTemplate = path.join(tempDir, `${filePrefix}_input.%(ext)s`);
+
+    const visitorData = await getYouTubeVisitorData();
     const args = [
       '-m', 'yt_dlp',
       '--js-runtimes', 'node',
-      '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
       '--no-playlist',
-      '--no-warnings',
-      '-f', 'bv*+ba/b',
-      '--merge-output-format', 'mp4',
-      '-o', outTemplate,
-      targetUrl
+      '--no-warnings'
     ];
+
+    if (visitorData) {
+      args.push('--extractor-args', `youtube:player_client=android_embedded,tv_embedded;visitor_data=${visitorData}`);
+    } else {
+      args.push('--extractor-args', 'youtube:player_client=android_embedded,tv_embedded');
+    }
+
+    if (process.env.YT_COOKIES) {
+      const cookieFile = path.join(tempDir, 'yt_cookies.txt');
+      try {
+        if (!fs.existsSync(cookieFile)) fs.writeFileSync(cookieFile, process.env.YT_COOKIES);
+        args.push('--cookies', cookieFile);
+      } catch (_) {}
+    }
+
+    args.push('-f', 'bv*+ba/b', '--merge-output-format', 'mp4', '-o', outTemplate, targetUrl);
 
     await new Promise((resolve, reject) => {
       const proc = spawn(PYTHON_BIN, args);
@@ -1259,7 +1327,6 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     const args = [
       '-m', 'yt_dlp',
       '--js-runtimes', 'node',
-      '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
       '--no-playlist',
       '--no-warnings',
       '-f', 'bv*+ba/b',
