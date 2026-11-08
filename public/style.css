@@ -1,3 +1,7 @@
+html {
+  scroll-behavior: smooth;
+}
+
 :root {
   --bg-page: #FFF5E9;
   --black: #111111;
@@ -982,13 +986,12 @@ body {
 .video-preview-frame {
   width: fit-content;
   max-width: 100%;
-  min-height: 180px;
+  min-height: 0;
   max-height: 290px;
-  background: #111;
-  border: var(--border-thick);
+  background: transparent;
+  border: none;
   border-radius: 0 !important;
-  /* Sharp flush corners matching image cropper */
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   overflow: visible !important;
   /* Allows handles to be grabbed freely without clipping */
   display: flex;
@@ -1019,22 +1022,29 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: 30;
-  overflow: hidden;
+  overflow: visible !important;
   /* Higher than loading overlay so crop box and handles are 100% visible immediately */
 }
 
+/* Semi-transparent dark shades outside crop lines to show excluded video regions */
 .v-shade {
-  display: none !important;
+  position: absolute;
+  background-color: rgba(0, 0, 0, 0.48);
+  pointer-events: none;
+  z-index: 31;
+  transition: opacity 0.15s ease;
 }
 
 .video-crop-box {
   position: absolute;
-  outline: 3px solid var(--vibrant-yellow);
-  box-shadow: 0 0 0 1.5px #000, 0 0 0 9999px rgba(0, 0, 0, 0.48);
+  box-sizing: border-box;
+  border: 3px solid var(--vibrant-yellow);
+  box-shadow: 0 0 0 1.5px #000;
   pointer-events: auto;
   cursor: move;
   touch-action: none;
   z-index: 32;
+  overflow: visible !important;
 }
 
 /* In 1:1 Square mode, hide the 4 edge handles so user cannot distort into freeform */
@@ -1238,12 +1248,28 @@ body {
 .filmstrip-placeholder {
   width: 100%;
   height: 100%;
+  position: relative;
+  overflow: hidden;
   background: repeating-linear-gradient(-45deg,
       #1f2937,
       #1f2937 6px,
       #374151 6px,
       #374151 12px);
-  opacity: 0.65;
+  opacity: 0.75;
+}
+
+.filmstrip-placeholder::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.22) 50%,
+      rgba(255, 255, 255, 0) 100%);
+  animation: skeleton-shimmer 1.4s infinite;
 }
 
 /* Dimmed Regions (Cut out) */
@@ -1578,13 +1604,12 @@ body {
   }
 }
 
-/* Sticker Canvas: Clean 1:1 Square matching WhatsApp sticker display without rounded edges */
+/* Sticker Canvas: Dynamic container that hugs the sticker's exact shape (portrait, landscape, or square) */
 .sticker-canvas {
-  width: 200px;
-  height: 200px;
-  max-width: min(200px, 60vw);
-  max-height: min(200px, 60vw);
-  aspect-ratio: 1 / 1;
+  width: auto;
+  height: auto;
+  max-width: min(240px, 75vw);
+  max-height: 240px;
   border: var(--border-thick);
   border-radius: 0 !important;
   box-shadow: 4px 4px 0px var(--black);
@@ -1666,10 +1691,10 @@ body {
 
 .sticker-img {
   display: block;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  width: auto;
+  height: auto;
+  max-width: min(240px, 75vw);
+  max-height: 240px;
   object-fit: contain;
   border-radius: 0 !important;
   -webkit-touch-callout: default !important;
@@ -1682,8 +1707,8 @@ body {
 
 /* Shimmering Skeleton for Sticker while Rendering (Clean White Neo-Brutalist) */
 .sticker-skeleton {
-  width: 100%;
-  height: 100%;
+  width: 200px;
+  height: 200px;
   position: relative;
   background: #FFFFFF;
   overflow: hidden;
@@ -2148,6 +2173,9 @@ body {
   /* Video Trimmer on Mobile */
   .video-preview-frame {
     max-height: 275px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
   }
 
   .preview-video-player {
@@ -2192,9 +2220,18 @@ body {
   }
 
   .sticker-canvas {
-    width: min(190px, 58vw);
-    height: min(190px, 58vw);
+    width: auto;
+    height: auto;
+    max-width: min(210px, 65vw);
+    max-height: 210px;
     border-radius: 0 !important;
+  }
+
+  .sticker-img {
+    max-width: min(210px, 65vw);
+    max-height: 210px;
+    width: auto;
+    height: auto;
   }
 
   .btn-wa {
@@ -2295,7 +2332,7 @@ body {
   overflow: hidden;
   background: #E5E7EB;
   border: var(--border-thick);
-  border-radius: var(--radius-card);
+  border-radius: 0 !important;
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
@@ -2360,7 +2397,7 @@ body {
   overflow: hidden;
   background: #E5E7EB;
   border: var(--border-thin);
-  border-radius: var(--radius-btn);
+  border-radius: 0 !important;
   width: 100%;
   box-shadow: 1px 1px 0px var(--black);
 }

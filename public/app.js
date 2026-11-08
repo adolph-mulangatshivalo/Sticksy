@@ -450,10 +450,12 @@ function getVideoRenderedRect() {
 
   if (vidRect.width <= 0 || vidRect.height <= 0) return null;
 
-  // Since <video> has width: auto and height: auto with object-fit: contain,
-  // the vidRect itself is the EXACT pixel boundary of the displayed video without internal letterboxes!
-  const left = Math.round(vidRect.left - frameRect.left);
-  const top = Math.round(vidRect.top - frameRect.top);
+  // Account for frame's native CSS borders so coordinates match absolute positioning padding-box
+  const borderLeft = videoPreviewFrame.clientLeft || 0;
+  const borderTop = videoPreviewFrame.clientTop || 0;
+
+  const left = Math.max(0, Math.round(vidRect.left - frameRect.left - borderLeft));
+  const top = Math.max(0, Math.round(vidRect.top - frameRect.top - borderTop));
   const width = Math.round(vidRect.width);
   const height = Math.round(vidRect.height);
 
@@ -531,6 +533,34 @@ function renderVideoCropBox() {
   videoCropBox.style.top = `${top}px`;
   videoCropBox.style.width = `${width}px`;
   videoCropBox.style.height = `${height}px`;
+
+  // Update outer dark shades to highlight the active crop area
+  if (vShadeTop) {
+    vShadeTop.style.top = '0px';
+    vShadeTop.style.left = '0px';
+    vShadeTop.style.width = `${overlayW}px`;
+    vShadeTop.style.height = `${Math.max(0, top)}px`;
+  }
+  if (vShadeBottom) {
+    const bTop = top + height;
+    vShadeBottom.style.top = `${bTop}px`;
+    vShadeBottom.style.left = '0px';
+    vShadeBottom.style.width = `${overlayW}px`;
+    vShadeBottom.style.height = `${Math.max(0, overlayH - bTop)}px`;
+  }
+  if (vShadeLeft) {
+    vShadeLeft.style.top = `${top}px`;
+    vShadeLeft.style.left = '0px';
+    vShadeLeft.style.width = `${Math.max(0, left)}px`;
+    vShadeLeft.style.height = `${height}px`;
+  }
+  if (vShadeRight) {
+    const rLeft = left + width;
+    vShadeRight.style.top = `${top}px`;
+    vShadeRight.style.left = `${rLeft}px`;
+    vShadeRight.style.width = `${Math.max(0, overlayW - rLeft)}px`;
+    vShadeRight.style.height = `${height}px`;
+  }
 }
 
 // Convert video crop box coordinates to native video pixel coordinates for FFmpeg
@@ -871,6 +901,7 @@ function displayPreview(info) {
     let videoUiRevealed = false;
     const revealVideoUi = () => {
       if (videoUiRevealed) return;
+      if (!previewVideo.videoWidth || previewVideo.videoWidth <= 0) return;
       videoUiRevealed = true;
       hideVideoLoader();
       if (previewSkeleton) previewSkeleton.classList.add('hidden');
@@ -902,6 +933,7 @@ function displayPreview(info) {
         if (p !== undefined) {
           p.then(() => {
             hideVideoLoader();
+            revealVideoUi();
             if (txtPlayPause) txtPlayPause.textContent = 'Pause';
             if (icPlayPause) {
               icPlayPause.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
@@ -909,6 +941,7 @@ function displayPreview(info) {
           }).catch(e => {
             console.log('Autoplay deferred:', e);
             hideVideoLoader();
+            revealVideoUi();
             if (txtPlayPause) txtPlayPause.textContent = 'Play';
             if (icPlayPause) {
               icPlayPause.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
@@ -918,31 +951,29 @@ function displayPreview(info) {
       };
 
       previewVideo.onloadedmetadata = () => {
-        revealVideoUi();
         attemptPlay();
-        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.ondurationchange = () => {
-        if (!videoUiRevealed && !isNaN(previewVideo.duration) && previewVideo.duration > 0) {
+        if (!videoUiRevealed && previewVideo.videoWidth > 0 && !isNaN(previewVideo.duration)) {
           revealVideoUi();
         }
       };
       previewVideo.oncanplay = () => {
-        hideVideoLoader();
+        revealVideoUi();
         attemptPlay();
-        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.onloadeddata = () => {
-        hideVideoLoader();
+        revealVideoUi();
         attemptPlay();
-        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.onplaying = () => {
-        hideVideoLoader();
-        if (previewSkeleton) previewSkeleton.classList.add('hidden');
-        videoTrimContainer.classList.remove('hidden');
-        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
+        revealVideoUi();
       };
+      setTimeout(() => {
+        if (!videoUiRevealed && previewVideo.videoWidth > 0) {
+          revealVideoUi();
+        }
+      }, 2500);
       previewVideo.onwaiting = () => {
         if (previewVideo.seeking) return;
         if (!videoBufferTimer) {
@@ -1021,12 +1052,13 @@ function displayPreview(info) {
       window.cropper = cropperInstance;
     };
 
+    // Safety fallback: only if image load stalls completely after 4s
     setTimeout(() => {
       if (previewSkeleton && !previewSkeleton.classList.contains('hidden')) {
         previewSkeleton.classList.add('hidden');
         imageCropContainer.classList.remove('hidden');
       }
-    }, 800);
+    }, 4000);
   }
 
   if (studioResultView) studioResultView.classList.add('hidden');
@@ -1043,13 +1075,9 @@ function displayPreview(info) {
 function autoScrollToCropper() {
   setTimeout(() => {
     const target = document.getElementById('previewCard');
-    const btn = document.getElementById('btnConvert');
     if (target && !target.classList.contains('hidden')) {
-      if (btn) {
-        btn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      } else {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      const targetY = window.pageYOffset + target.getBoundingClientRect().top - 20;
+      window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
     }
   }, 120);
 }
@@ -1610,31 +1638,18 @@ function displayResult(sticker) {
     revealResultStage();
   }
 
-  // 2. In parallel (asynchronously in background, never blocking UI display):
+  // 2. Pre-cache GIF blob quietly in background for instantaneous clipboard copying (NEVER touch resultStickerImg.src!)
   (async () => {
     try {
       const gifUrl = sticker.gifUrl || sticker.viewUrl;
       const gifResp = await fetch(gifUrl);
       if (gifResp.ok) {
         currentStickerData.cachedGifBlob = await gifResp.blob();
-        console.log('[Sticker] GIF blob cached (' + currentStickerData.cachedGifBlob.size + ' bytes)');
-        const localBlobUrl = URL.createObjectURL(currentStickerData.cachedGifBlob);
-        resultStickerImg.src = `${localBlobUrl}#stickers.gif`;
+        console.log('[Sticker] GIF blob cached for clipboard (' + currentStickerData.cachedGifBlob.size + ' bytes)');
       }
     } catch (e) {
       console.warn('Background GIF blob caching warning:', e);
     }
-
-    // Pre-fetch WhatsApp MP4 blob in background
-    try {
-      const mp4Url = sticker.mp4Url || (sticker.viewUrl ? sticker.viewUrl.replace(/\.gif$/i, '.mp4') : null);
-      if (mp4Url) {
-        const mp4Resp = await fetch(mp4Url);
-        if (mp4Resp.ok) {
-          currentStickerData.cachedMp4Blob = await mp4Resp.blob();
-        }
-      }
-    } catch (e) {}
   })();
 
   // Box 2 switches view in-place from Trimming/Crop to Sticker Result!
