@@ -1,0 +1,19 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Sticksy Health Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Live App
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://sticksy-kw3v.onrender.com/health)
+          echo "Health check responded with HTTP $response"
+          if [ "$response" -ne 200 ]; then
+            echo "Warning: Response code was $response"
+          fi

@@ -756,5 +756,22 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Sticksy Server running on http://localhost:${PORT}`);
   console.log(`⚡ Every link deserves a sticker.`);
   console.log(`=========================================`);
+
+  // Automatic keep-alive ping for cloud hosting (prevents Render free tier from sleeping after 15m)
+  if (process.env.NODE_ENV === 'production' || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+    const keepAliveUrl = process.env.RENDER_EXTERNAL_URL
+      ? `${process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '')}/health`
+      : 'https://sticksy-kw3v.onrender.com/health';
+    const KEEP_ALIVE_INTERVAL = 8 * 60 * 1000; // Ping every 8 minutes
+    console.log(`⏰ Keep-alive pinger activated: pinging ${keepAliveUrl} every 8 minutes.`);
+    setInterval(async () => {
+      try {
+        const res = await fetch(keepAliveUrl);
+        console.log(`[Keep-Alive] Pinged ${keepAliveUrl} - Status ${res.status}`);
+      } catch (err) {
+        console.warn(`[Keep-Alive] Ping warning:`, err.message);
+      }
+    }, KEEP_ALIVE_INTERVAL);
+  }
 });
 
