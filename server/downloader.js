@@ -225,6 +225,82 @@ export async function extractInstagramDirect(url) {
 }
 
 /**
+ * Fast & reliable YouTube extractor for Shorts, regular videos, and mobile links.
+ * Bypasses datacenter bot blocks using mobile player clients and oEmbed API.
+ */
+export async function extractYouTubeDirect(rawUrl) {
+  try {
+    const match = rawUrl.match(/(?:v=|shorts\/|youtu\.be\/|embed\/|v\/|watch\?v=|\/e\/)([a-zA-Z0-9_-]{11})/i);
+    if (!match) return null;
+    const videoId = match[1];
+    const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    // 1. Instant oEmbed metadata (title, author)
+    let title = 'YouTube Video';
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const oeRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(canonicalUrl)}&format=json`, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      clearTimeout(timeout);
+      if (oeRes.ok) {
+        const oeJson = await oeRes.json();
+        if (oeJson.title) title = oeJson.title;
+      }
+    } catch (_) {}
+
+    const thumbnail = `https://i.ytimg.com/vi/${videoId}/hq720.jpg`;
+
+    // 2. Fetch progressive stream URL using mobile client extractor args (bypasses bot detection)
+    const streamUrl = await new Promise((resolve) => {
+      const proc = spawn(PYTHON_BIN, [
+        '-m', 'yt_dlp',
+        '--extractor-args', 'youtube:player_client=ios,mweb,android',
+        '--no-warnings',
+        '--no-playlist',
+        '-g',
+        '-f', '18/b[ext=mp4]/best[ext=mp4]/bv*[ext=mp4]+ba[ext=m4a]/best',
+        canonicalUrl
+      ]);
+      let out = '';
+      const timer = setTimeout(() => {
+        try { proc.kill(); } catch (_) {}
+        resolve(null);
+      }, 6000);
+
+      proc.stdout.on('data', (d) => { out += d.toString(); });
+      proc.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0 && out.trim()) {
+          const lines = out.trim().split('\n').map(l => l.trim()).filter(Boolean);
+          resolve(lines[0] || null);
+        } else {
+          resolve(null);
+        }
+      });
+      proc.on('error', () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+    });
+
+    return {
+      title,
+      thumbnail,
+      videoUrl: streamUrl,
+      type: 'video',
+      duration: 10,
+      platform: { id: 'youtube', name: 'YouTube', icon: '▶️' }
+    };
+  } catch (e) {
+    // fallback
+  }
+  return null;
+}
+
+/**
  * Fast & reliable Facebook extractor for Reels, Videos, Watch, and mobile share links.
  * Uses SaveF high-speed API with direct Meta CDN MP4/JPEG token decoding,
  * with fallbacks to direct page regex and OpenGraph.
@@ -623,6 +699,9 @@ except Exception as e:
  */
 export async function extractOpenGraphDirect(url) {
   try {
+    const platform = detectPlatform(url);
+    if (platform.id === 'youtube') return null;
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(url, {
@@ -643,7 +722,7 @@ export async function extractOpenGraphDirect(url) {
         thumbnail: url,
         videoUrl: null,
         type: 'image',
-        platform: detectPlatform(url)
+        platform
       };
     }
     if (contentType.startsWith('video/')) {
@@ -653,7 +732,7 @@ export async function extractOpenGraphDirect(url) {
         videoUrl: url,
         type: 'video',
         duration: 5,
-        platform: detectPlatform(url)
+        platform
       };
     }
 
@@ -664,7 +743,17 @@ export async function extractOpenGraphDirect(url) {
     const ogVideoMatch = html.match(/property="og:video(?::secure_url)?"\s+content="([^"]+)"/i) || html.match(/content="([^"]+)"\s+property="og:video(?::secure_url)?"/i);
     const ogImgMatch = html.match(/property="og:image(?::secure_url)?"\s+content="([^"]+)"/i) || html.match(/content="([^"]+)"\s+property="og:image(?::secure_url)?"/i) || html.match(/name="twitter:image"\s+content="([^"]+)"/i);
 
-    const videoUrl = ogVideoMatch ? ogVideoMatch[1] : null;
+    let videoUrl = ogVideoMatch ? ogVideoMatch[1] : null;
+    if (videoUrl && (
+      videoUrl.includes('/embed/') ||
+      videoUrl.includes('youtube.com') ||
+      videoUrl.includes('youtu.be') ||
+      videoUrl.includes('player.vimeo.com') ||
+      videoUrl.includes('facebook.com/plugins')
+    )) {
+      videoUrl = null;
+    }
+
     const thumbnail = ogImgMatch ? ogImgMatch[1] : videoUrl;
 
     if (videoUrl) {
@@ -674,7 +763,7 @@ export async function extractOpenGraphDirect(url) {
         videoUrl,
         type: 'video',
         duration: 5,
-        platform: detectPlatform(url)
+        platform
       };
     }
     if (thumbnail) {
@@ -683,7 +772,7 @@ export async function extractOpenGraphDirect(url) {
         thumbnail,
         videoUrl: null,
         type: 'image',
-        platform: detectPlatform(url)
+        platform
       };
     }
   } catch (e) {
@@ -817,15 +906,31 @@ export async function inspectMedia(rawUrl) {
     }
   }
 
+  // 7b. Fast & reliable YouTube extractor (Shorts, regular videos, mobile links)
+  if (platform.id === 'youtube') {
+    const ytData = await extractYouTubeDirect(url);
+    if (ytData) return ytData;
+  }
+
   // 8. Universal OpenGraph tag extractor (Instant 250ms check before heavy yt-dlp)
-  const ogData = await extractOpenGraphDirect(url);
-  if (ogData && (ogData.videoUrl || ogData.thumbnail)) {
-    return ogData;
+  if (platform.id !== 'youtube') {
+    const ogData = await extractOpenGraphDirect(url);
+    if (ogData && (ogData.videoUrl || ogData.thumbnail)) {
+      return ogData;
+    }
   }
 
   // 9. Execute yt-dlp metadata dump as fallback for YouTube, Facebook, Reddit, etc.
   return new Promise((resolve, reject) => {
-    const proc = spawn(PYTHON_BIN, ['-m', 'yt_dlp', '--js-runtimes', 'node', '--dump-single-json', '--no-warnings', '--no-playlist', url]);
+    const proc = spawn(PYTHON_BIN, [
+      '-m', 'yt_dlp',
+      '--js-runtimes', 'node',
+      '--dump-single-json',
+      '--no-warnings',
+      '--no-playlist',
+      '--extractor-args', 'youtube:player_client=ios,mweb,android',
+      url
+    ]);
     let stdout = '';
     let stderr = '';
 
@@ -1096,21 +1201,58 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     }
   }
 
-  // 8. Fast OpenGraph media direct download before yt-dlp
-  const ogData = await extractOpenGraphDirect(url);
-  if (ogData) {
-    if (ogData.videoUrl) {
-      const outPath = path.join(tempDir, `${filePrefix}_input.mp4`);
-      await downloadDirectMedia(ogData.videoUrl, outPath);
-      return outPath;
-    } else if (ogData.thumbnail) {
-      const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
-      await downloadDirectMedia(ogData.thumbnail, outPath);
-      return outPath;
+  // 7b. Dedicated YouTube download handler (Shorts, regular videos, mobile links)
+  if (platform.id === 'youtube') {
+    const match = url.match(/(?:v=|shorts\/|youtu\.be\/|embed\/|v\/|watch\?v=|\/e\/)([a-zA-Z0-9_-]{11})/i);
+    const targetUrl = match ? `https://www.youtube.com/watch?v=${match[1]}` : url;
+    const outTemplate = path.join(tempDir, `${filePrefix}_input.%(ext)s`);
+    const args = [
+      '-m', 'yt_dlp',
+      '--js-runtimes', 'node',
+      '--no-playlist',
+      '--no-warnings',
+      '--extractor-args', 'youtube:player_client=ios,mweb,android',
+      '-f', 'bv*[height<=720]+ba/b[height<=720]/18/bv*+ba/b',
+      '--merge-output-format', 'mp4',
+      '-o', outTemplate,
+      targetUrl
+    ];
+
+    await new Promise((resolve, reject) => {
+      const proc = spawn(PYTHON_BIN, args);
+      let stderr = '';
+      proc.stderr.on('data', (d) => { stderr += d.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr.slice(-300) || 'YouTube video download failed'));
+      });
+      proc.on('error', (err) => reject(err));
+    });
+
+    const files = fs.readdirSync(tempDir);
+    const downloaded = files.find(f => f.startsWith(`${filePrefix}_input.`));
+    if (downloaded) {
+      return path.join(tempDir, downloaded);
     }
   }
 
-  // 9. yt-dlp download with fast format selection (720p or lower is ideal for 512x512 stickers)
+  // 8. Fast OpenGraph media direct download before yt-dlp
+  if (platform.id !== 'youtube') {
+    const ogData = await extractOpenGraphDirect(url);
+    if (ogData) {
+      if (ogData.videoUrl && !ogData.videoUrl.includes('/embed/')) {
+        const outPath = path.join(tempDir, `${filePrefix}_input.mp4`);
+        await downloadDirectMedia(ogData.videoUrl, outPath);
+        return outPath;
+      } else if (ogData.thumbnail) {
+        const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
+        await downloadDirectMedia(ogData.thumbnail, outPath);
+        return outPath;
+      }
+    }
+  }
+
+  // 9. yt-dlp download with resilient format selection & container merging
   try {
     const outTemplate = path.join(tempDir, `${filePrefix}_input.%(ext)s`);
     const args = [
@@ -1118,7 +1260,9 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       '--js-runtimes', 'node',
       '--no-playlist',
       '--no-warnings',
-      '-f', 'b[height<=720]/bestvideo[height<=720]/best[height<=720]/best',
+      '--extractor-args', 'youtube:player_client=ios,mweb,android',
+      '-f', 'bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '--merge-output-format', 'mp4',
       '-o', outTemplate,
       url
     ];
@@ -1140,16 +1284,18 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       return path.join(tempDir, match);
     }
   } catch (err) {
-    // 9. If yt-dlp download failed, try OpenGraph media download fallback
-    const ogData = await extractOpenGraphDirect(url);
-    if (ogData) {
-      const targetUrl = ogData.videoUrl || ogData.thumbnail;
-      if (targetUrl) {
-        const isVid = Boolean(ogData.videoUrl);
-        const ext = isVid ? 'mp4' : 'jpg';
-        const outPath = path.join(tempDir, `${filePrefix}_input.${ext}`);
-        await downloadDirectMedia(targetUrl, outPath);
-        return outPath;
+    // 9. If yt-dlp download failed, try OpenGraph media download fallback (for non-YouTube)
+    if (platform.id !== 'youtube') {
+      const ogData = await extractOpenGraphDirect(url);
+      if (ogData) {
+        const targetUrl = ogData.videoUrl || ogData.thumbnail;
+        if (targetUrl && !targetUrl.includes('/embed/')) {
+          const isVid = Boolean(ogData.videoUrl);
+          const ext = isVid ? 'mp4' : 'jpg';
+          const outPath = path.join(tempDir, `${filePrefix}_input.${ext}`);
+          await downloadDirectMedia(targetUrl, outPath);
+          return outPath;
+        }
       }
     }
     throw err;

@@ -137,6 +137,8 @@ app.get('/api/proxy-image', async (req, res) => {
       referer = 'https://www.pinterest.com/';
     } else if (parsed.hostname.includes('twimg.com') || parsed.hostname.includes('twitter') || parsed.hostname.includes('x.com')) {
       referer = 'https://twitter.com/';
+    } else if (parsed.hostname.includes('ytimg.com') || parsed.hostname.includes('ggpht.com') || parsed.hostname.includes('googlevideo.com') || parsed.hostname.includes('youtube.com')) {
+      referer = 'https://www.youtube.com/';
     }
 
     const headers = {
@@ -265,6 +267,8 @@ app.get('/api/proxy-video', async (req, res) => {
       referer = 'https://www.pinterest.com/';
     } else if (parsed.hostname.includes('twimg.com') || parsed.hostname.includes('twitter') || parsed.hostname.includes('x.com')) {
       referer = 'https://twitter.com/';
+    } else if (parsed.hostname.includes('ytimg.com') || parsed.hostname.includes('ggpht.com') || parsed.hostname.includes('googlevideo.com') || parsed.hostname.includes('youtube.com')) {
+      referer = 'https://www.youtube.com/';
     }
 
     const headers = {
