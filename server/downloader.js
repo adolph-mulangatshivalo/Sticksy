@@ -337,8 +337,8 @@ export async function extractYouTubeDirect(rawUrl) {
       title,
       thumbnail,
       videoUrl: streamUrl,
-      type: 'video',
-      duration: 10,
+      type: streamUrl ? 'video' : 'image',
+      duration: streamUrl ? 10 : null,
       platform: { id: 'youtube', name: 'YouTube', icon: '▶️' }
     };
   } catch (e) {
@@ -1260,48 +1260,69 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
   // 7b. Dedicated YouTube download handler (Shorts, regular videos, mobile links)
   if (platform.id === 'youtube') {
     const match = url.match(/(?:v=|shorts\/|youtu\.be\/|embed\/|v\/|watch\?v=|\/e\/)([a-zA-Z0-9_-]{11})/i);
-    const targetUrl = match ? `https://www.youtube.com/watch?v=${match[1]}` : url;
+    const videoId = match ? match[1] : null;
+    const targetUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : url;
     const outTemplate = path.join(tempDir, `${filePrefix}_input.%(ext)s`);
 
-    const visitorData = await getYouTubeVisitorData();
-    const args = [
-      '-m', 'yt_dlp',
-      '--js-runtimes', 'node',
-      '--no-playlist',
-      '--no-warnings'
-    ];
+    try {
+      const visitorData = await getYouTubeVisitorData();
+      const args = [
+        '-m', 'yt_dlp',
+        '--js-runtimes', 'node',
+        '--no-playlist',
+        '--no-warnings'
+      ];
 
-    if (visitorData) {
-      args.push('--extractor-args', `youtube:player_client=android_embedded,tv_embedded;visitor_data=${visitorData}`);
-    } else {
-      args.push('--extractor-args', 'youtube:player_client=android_embedded,tv_embedded');
-    }
+      if (visitorData) {
+        args.push('--extractor-args', `youtube:player_client=android_embedded,tv_embedded;visitor_data=${visitorData}`);
+      } else {
+        args.push('--extractor-args', 'youtube:player_client=android_embedded,tv_embedded');
+      }
 
-    if (process.env.YT_COOKIES) {
-      const cookieFile = path.join(tempDir, 'yt_cookies.txt');
-      try {
-        if (!fs.existsSync(cookieFile)) fs.writeFileSync(cookieFile, process.env.YT_COOKIES);
-        args.push('--cookies', cookieFile);
-      } catch (_) {}
-    }
+      if (process.env.YT_COOKIES) {
+        const cookieFile = path.join(tempDir, 'yt_cookies.txt');
+        try {
+          if (!fs.existsSync(cookieFile)) fs.writeFileSync(cookieFile, process.env.YT_COOKIES);
+          args.push('--cookies', cookieFile);
+        } catch (_) {}
+      }
 
-    args.push('-f', 'bv*+ba/b', '--merge-output-format', 'mp4', '-o', outTemplate, targetUrl);
+      args.push('-f', 'bv*+ba/b', '--merge-output-format', 'mp4', '-o', outTemplate, targetUrl);
 
-    await new Promise((resolve, reject) => {
-      const proc = spawn(PYTHON_BIN, args);
-      let stderr = '';
-      proc.stderr.on('data', (d) => { stderr += d.toString(); });
-      proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(stderr.slice(-300) || 'YouTube video download failed'));
+      await new Promise((resolve, reject) => {
+        const proc = spawn(PYTHON_BIN, args);
+        let stderr = '';
+        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+        proc.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(stderr.slice(-300) || 'YouTube video download failed'));
+        });
+        proc.on('error', (err) => reject(err));
       });
-      proc.on('error', (err) => reject(err));
-    });
 
-    const files = fs.readdirSync(tempDir);
-    const downloaded = files.find(f => f.startsWith(`${filePrefix}_input.`));
-    if (downloaded) {
-      return path.join(tempDir, downloaded);
+      const files = fs.readdirSync(tempDir);
+      const downloaded = files.find(f => f.startsWith(`${filePrefix}_input.`));
+      if (downloaded) {
+        return path.join(tempDir, downloaded);
+      }
+    } catch (e) {
+      console.warn('YouTube stream download restricted on cloud IP, falling back to high-res photo:', e.message);
+    }
+
+    // High-resolution photo fallback if datacenter IP is blocked from video streams
+    if (videoId) {
+      const candidates = [
+        `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+        `https://i.ytimg.com/vi/${videoId}/hq720.jpg`,
+        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+      ];
+      for (const thumbUrl of candidates) {
+        try {
+          const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
+          await downloadDirectMedia(thumbUrl, outPath);
+          return outPath;
+        } catch (_) {}
+      }
     }
   }
 
