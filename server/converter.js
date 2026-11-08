@@ -110,7 +110,7 @@ export async function convertAnimatedMedia({
       const cropH = Math.max(2, Math.round(cropData.height / 2) * 2);
       const cropX = Math.max(0, Math.round(cropData.x || 0));
       const cropY = Math.max(0, Math.round(cropData.y || 0));
-      return `fps=${targetFps},crop=${cropW}:${cropH}:${cropX}:${cropY},scale='trunc(min(${targetScale},${targetScale}*iw/ih)/2)*2':'trunc(min(${targetScale},${targetScale}*ih/iw)/2)*2',format=rgba`;
+      return `fps=${targetFps},crop='min(iw,${cropW})':'min(ih,${cropH})':'min(iw-out_w,${cropX})':'min(ih-out_h,${cropY})',scale='trunc(min(${targetScale},${targetScale}*iw/ih)/2)*2':'trunc(min(${targetScale},${targetScale}*ih/iw)/2)*2',format=rgba`;
     }
     return `fps=${targetFps},scale='trunc(min(${targetScale},${targetScale}*iw/ih)/2)*2':'trunc(min(${targetScale},${targetScale}*ih/iw)/2)*2',format=rgba`;
   };
@@ -207,7 +207,7 @@ export async function convertAnimatedToGif({
     const cropH = Math.max(2, Math.round(cropData.height / 2) * 2);
     const cropX = Math.max(0, Math.round(cropData.x || 0));
     const cropY = Math.max(0, Math.round(cropData.y || 0));
-    filterBase = `fps=${targetFps},crop=${cropW}:${cropH}:${cropX}:${cropY},scale='trunc(min(${targetScale},${targetScale}*iw/ih)/2)*2':'trunc(min(${targetScale},${targetScale}*ih/iw)/2)*2'`;
+    filterBase = `fps=${targetFps},crop='min(iw,${cropW})':'min(ih,${cropH})':'min(iw-out_w,${cropX})':'min(ih-out_h,${cropY})',scale='trunc(min(${targetScale},${targetScale}*iw/ih)/2)*2':'trunc(min(${targetScale},${targetScale}*ih/iw)/2)*2'`;
   } else {
     filterBase = `fps=${targetFps},scale='trunc(min(${targetScale},${targetScale}*iw/ih)/2)*2':'trunc(min(${targetScale},${targetScale}*ih/iw)/2)*2'`;
   }

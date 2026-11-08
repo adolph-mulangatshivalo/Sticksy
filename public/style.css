@@ -1023,9 +1023,7 @@ body {
 }
 
 .v-shade {
-  position: absolute;
-  background: rgba(0, 0, 0, 0.45);
-  pointer-events: none;
+  display: none !important;
 }
 
 .video-crop-box {

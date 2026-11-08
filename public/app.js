@@ -243,8 +243,10 @@ if (btnVideoRatioFree) {
     videoCropBox?.classList.remove('ratio-square');
 
     const rect = getVideoRenderedRect();
-    videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
-    renderVideoCropBox();
+    if (rect) {
+      videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
+      renderVideoCropBox();
+    }
 
     if (videoCropHintText) {
       videoCropHintText.textContent = 'Freeform Video Crop active — covering whole media, drag handles to customize';
@@ -261,12 +263,13 @@ if (btnVideoRatioSquare) {
     videoCropBox?.classList.add('ratio-square');
     
     const rect = getVideoRenderedRect();
-    const side = Math.max(40, Math.round(Math.min(rect.width, rect.height) * 0.90));
-    const left = Math.round((rect.width - side) / 2);
-    const top = Math.round((rect.height - side) / 2);
-    
-    videoCropState.box = { left, top, width: side, height: side };
-    renderVideoCropBox();
+    if (rect) {
+      const side = Math.max(30, Math.round(Math.min(rect.width, rect.height) * 0.90));
+      const left = Math.round((rect.width - side) / 2);
+      const top = Math.round((rect.height - side) / 2);
+      videoCropState.box = { left, top, width: side, height: side };
+      renderVideoCropBox();
+    }
     
     if (videoCropHintText) {
       videoCropHintText.textContent = '1:1 Square Video Crop active — locked square, drag yellow corners to resize';
@@ -282,8 +285,10 @@ if (btnVideoResetCrop) {
     btnVideoRatioSquare?.classList.remove('active');
     videoCropBox?.classList.remove('ratio-square');
     const rect = getVideoRenderedRect();
-    videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
-    renderVideoCropBox();
+    if (rect) {
+      videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
+      renderVideoCropBox();
+    }
     if (videoCropHintText) {
       videoCropHintText.textContent = 'Crop reset to cover whole media';
     }
@@ -434,49 +439,23 @@ setupVideoCropInteractions();
 
 // Calculate exact rendered sub-rectangle of video inside videoPreviewFrame
 function getVideoRenderedRect() {
-  if (!previewVideo || !videoPreviewFrame) {
-    return { left: 0, top: 0, width: 240, height: 200 };
+  if (!previewVideo || !videoPreviewFrame) return null;
+  // Guard against uninitialized video dimensions (e.g. 0x0 or WebKit 300x150 fallback before metadata)
+  if (!previewVideo.videoWidth || !previewVideo.videoHeight || previewVideo.videoWidth <= 0 || previewVideo.videoHeight <= 0) {
+    return null;
   }
+
   const frameRect = videoPreviewFrame.getBoundingClientRect();
   const vidRect = previewVideo.getBoundingClientRect();
 
-  if (frameRect.width <= 0 || vidRect.width <= 0 || vidRect.height <= 0) {
-    const w = previewVideo.offsetWidth || 240;
-    const h = previewVideo.offsetHeight || 200;
-    return { left: 0, top: 0, width: w, height: h };
-  }
+  if (vidRect.width <= 0 || vidRect.height <= 0) return null;
 
-  const elW = vidRect.width;
-  const elH = vidRect.height;
-  const natW = previewVideo.videoWidth || elW;
-  const natH = previewVideo.videoHeight || elH;
-
-  const videoRatio = natW / natH;
-  const elementRatio = elW / elH;
-
-  let renderW = elW;
-  let renderH = elH;
-  let renderLeft = 0;
-  let renderTop = 0;
-
-  if (elementRatio > videoRatio) {
-    // Pillarbox: video is narrower than element container
-    renderH = elH;
-    renderW = elH * videoRatio;
-    renderLeft = (elW - renderW) / 2;
-    renderTop = 0;
-  } else if (elementRatio < videoRatio) {
-    // Letterbox: video is wider than element container
-    renderW = elW;
-    renderH = elW / videoRatio;
-    renderLeft = 0;
-    renderTop = (elH - renderH) / 2;
-  }
-
-  const left = Math.round((vidRect.left - frameRect.left) + renderLeft);
-  const top = Math.round((vidRect.top - frameRect.top) + renderTop);
-  const width = Math.max(30, Math.round(renderW));
-  const height = Math.max(30, Math.round(renderH));
+  // Since <video> has width: auto and height: auto with object-fit: contain,
+  // the vidRect itself is the EXACT pixel boundary of the displayed video without internal letterboxes!
+  const left = Math.round(vidRect.left - frameRect.left);
+  const top = Math.round(vidRect.top - frameRect.top);
+  const width = Math.round(vidRect.width);
+  const height = Math.round(vidRect.height);
 
   return { left, top, width, height };
 }
@@ -487,14 +466,23 @@ function initVideoCropOverlay() {
 
   const applySize = () => {
     const rect = getVideoRenderedRect();
-    if (rect.width <= 30 || rect.height <= 30) return;
+    if (!rect || rect.width <= 10 || rect.height <= 10) {
+      // Dimensions not ready yet: retry when metadata or frames are available
+      const retryEvents = ['loadedmetadata', 'loadeddata', 'canplay', 'playing'];
+      const onReady = () => {
+        retryEvents.forEach(evt => previewVideo.removeEventListener(evt, onReady));
+        initVideoCropOverlay();
+      };
+      retryEvents.forEach(evt => previewVideo.addEventListener(evt, onReady, { once: true }));
+      return;
+    }
 
     videoCropOverlay.style.width = `${rect.width}px`;
     videoCropOverlay.style.height = `${rect.height}px`;
     videoCropOverlay.style.left = `${rect.left}px`;
     videoCropOverlay.style.top = `${rect.top}px`;
 
-    // CRITICAL: If the user has already set a custom crop, PRESERVE it!
+    // CRITICAL: If the user has already set a custom crop on this video, PRESERVE it!
     // Never reset when the video loops or on time updates!
     if (videoCropState.isCustomCropped && videoCropState.box && videoCropState.box.width > 0) {
       renderVideoCropBox();
@@ -503,13 +491,13 @@ function initVideoCropOverlay() {
 
     if (videoCropState.ratio === '1') {
       videoCropBox.classList.add('ratio-square');
-      const side = Math.max(40, Math.round(Math.min(rect.width, rect.height) * 0.90));
+      const side = Math.max(30, Math.round(Math.min(rect.width, rect.height) * 0.90));
       const left = Math.round((rect.width - side) / 2);
       const top = Math.round((rect.height - side) / 2);
       videoCropState.box = { left, top, width: side, height: side };
     } else {
       videoCropBox.classList.remove('ratio-square');
-      // Freeform: default to covering 100% of the active rendered video
+      // Freeform: default to flush coverage of 100% of the active rendered video
       videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
     }
     renderVideoCropBox();
@@ -526,15 +514,16 @@ window.addEventListener('resize', () => {
 
 function renderVideoCropBox() {
   if (!videoCropOverlay || !videoCropBox) return;
-  const overlayW = videoCropOverlay.offsetWidth || 300;
-  const overlayH = videoCropOverlay.offsetHeight || 300;
+  const overlayW = videoCropOverlay.offsetWidth;
+  const overlayH = videoCropOverlay.offsetHeight;
+  if (!overlayW || !overlayH) return;
   
   let { left, top, width, height } = videoCropState.box;
   
-  left = Math.max(0, Math.min(left, overlayW - 30));
-  top = Math.max(0, Math.min(top, overlayH - 30));
-  width = Math.max(30, Math.min(width, overlayW - left));
-  height = Math.max(30, Math.min(height, overlayH - top));
+  left = Math.max(0, Math.min(left, overlayW - 20));
+  top = Math.max(0, Math.min(top, overlayH - 20));
+  width = Math.max(20, Math.min(width, overlayW - left));
+  height = Math.max(20, Math.min(height, overlayH - top));
   
   videoCropState.box = { left, top, width, height };
   
@@ -542,41 +531,17 @@ function renderVideoCropBox() {
   videoCropBox.style.top = `${top}px`;
   videoCropBox.style.width = `${width}px`;
   videoCropBox.style.height = `${height}px`;
-  
-  if (vShadeTop) {
-    vShadeTop.style.top = '0px';
-    vShadeTop.style.left = '0px';
-    vShadeTop.style.width = '100%';
-    vShadeTop.style.height = `${top}px`;
-  }
-  if (vShadeBottom) {
-    vShadeBottom.style.top = `${top + height}px`;
-    vShadeBottom.style.left = '0px';
-    vShadeBottom.style.width = '100%';
-    vShadeBottom.style.height = `${Math.max(0, overlayH - (top + height))}px`;
-  }
-  if (vShadeLeft) {
-    vShadeLeft.style.top = `${top}px`;
-    vShadeLeft.style.left = '0px';
-    vShadeLeft.style.width = `${left}px`;
-    vShadeLeft.style.height = `${height}px`;
-  }
-  if (vShadeRight) {
-    vShadeRight.style.top = `${top}px`;
-    vShadeRight.style.left = `${left + width}px`;
-    vShadeRight.style.width = `${Math.max(0, overlayW - (left + width))}px`;
-    vShadeRight.style.height = `${height}px`;
-  }
 }
 
 // Convert video crop box coordinates to native video pixel coordinates for FFmpeg
 function getVideoCropData() {
-  if (!previewVideo || !videoCropState.box.width) return null;
+  if (!previewVideo || !videoCropState.box || !videoCropState.box.width) return null;
   const rect = getVideoRenderedRect();
-  if (!rect.width || !rect.height) return null;
+  if (!rect || !rect.width || !rect.height) return null;
 
-  const natW = previewVideo.videoWidth || rect.width;
-  const natH = previewVideo.videoHeight || rect.height;
+  const natW = previewVideo.videoWidth;
+  const natH = previewVideo.videoHeight;
+  if (!natW || !natH) return null;
 
   const { left, top, width, height } = videoCropState.box;
 
@@ -584,7 +549,7 @@ function getVideoCropData() {
   if (!videoCropState.isCustomCropped && videoCropState.ratio === 'free') {
     return null;
   }
-  if (videoCropState.ratio === 'free' && left <= 4 && top <= 4 && width >= rect.width - 8 && height >= rect.height - 8) {
+  if (videoCropState.ratio === 'free' && left <= 3 && top <= 3 && width >= rect.width - 6 && height >= rect.height - 6) {
     return null;
   }
 
@@ -955,6 +920,7 @@ function displayPreview(info) {
       previewVideo.onloadedmetadata = () => {
         revealVideoUi();
         attemptPlay();
+        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.ondurationchange = () => {
         if (!videoUiRevealed && !isNaN(previewVideo.duration) && previewVideo.duration > 0) {
@@ -964,15 +930,18 @@ function displayPreview(info) {
       previewVideo.oncanplay = () => {
         hideVideoLoader();
         attemptPlay();
+        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.onloadeddata = () => {
         hideVideoLoader();
         attemptPlay();
+        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.onplaying = () => {
         hideVideoLoader();
         if (previewSkeleton) previewSkeleton.classList.add('hidden');
         videoTrimContainer.classList.remove('hidden');
+        if (!videoCropState.isCustomCropped) initVideoCropOverlay();
       };
       previewVideo.onwaiting = () => {
         if (previewVideo.seeking) return;
@@ -1785,6 +1754,26 @@ if (stickerCanvasContainer) {
 }
 
 
+
+// Tap on Callout to Copy Directly
+if (holdCallout) {
+  holdCallout.addEventListener('click', async () => {
+    const ok = await copyGifToClipboard();
+    if (ok) {
+      if (stickerCanvasContainer) {
+        stickerCanvasContainer.classList.add('copied-burst');
+        setTimeout(() => stickerCanvasContainer.classList.remove('copied-burst'), 1200);
+      }
+      holdCallout.classList.add('success-copied');
+      if (calloutText) calloutText.textContent = 'GIF copied! Tap below to open WhatsApp';
+      showAlert('GIF copied to clipboard! Tap Open WhatsApp below to paste.');
+      setTimeout(() => {
+        holdCallout.classList.remove('success-copied');
+        if (calloutText) calloutText.textContent = 'Hold the GIF and tap Copy image';
+      }, 5000);
+    }
+  });
+}
 
 // 2. Global Copy Event: When user selects "Copy image" from browser menu
 // (DOES NOT automatically open WhatsApp - prompts user to tap the button!)
