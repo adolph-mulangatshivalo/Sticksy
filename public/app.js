@@ -1558,6 +1558,7 @@ btnConvert.addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               url: currentMediaData.sourceUrl,
+              videoUrl: currentMediaData.videoUrl || null,
               cropMode: 'fit',
               cropData,
               packName: pack,
@@ -1593,6 +1594,7 @@ btnConvert.addEventListener('click', async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url: currentMediaData.sourceUrl,
+            videoUrl: currentMediaData.videoUrl || null,
             startTime,
             duration,
             cropMode,
@@ -1631,51 +1633,50 @@ function displayResult(sticker) {
   const durText = sticker.duration ? ` • ${sticker.duration.toFixed(1)}s` : '';
   stickerSpecs.textContent = `512×512 • ${sticker.sizeKb} KB • ${formatLabel}${durText}`;
 
-  // Pre-prepare clipboard data immediately so copying is instantaneous
-  currentStickerData.cachedGifBlob = null;
+  // If base64 dataUrl is returned, decode into memory blob instantly for 0ms clipboard copying
+  if (sticker.dataUrl && sticker.dataUrl.startsWith('data:image/gif;base64,')) {
+    try {
+      const base64Data = sticker.dataUrl.split(',')[1];
+      const binaryStr = atob(base64Data);
+      const len = binaryStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      currentStickerData.cachedGifBlob = new Blob([bytes], { type: 'image/gif' });
+      console.log('[Sticker] In-memory GIF blob ready for clipboard (' + bytes.length + ' bytes)');
+    } catch (e) {
+      currentStickerData.cachedGifBlob = null;
+    }
+  } else {
+    currentStickerData.cachedGifBlob = null;
+  }
   currentStickerData.cachedMp4Blob = null;
 
-  // Show skeleton while GIF/image bytes are fetching and decoding
-  if (stickerSkeleton) stickerSkeleton.classList.remove('hidden');
-  if (resultStickerImg) resultStickerImg.classList.add('hidden');
+  // Reveal result sticker IMMEDIATELY without waiting or artificial delay!
+  if (stickerSkeleton) stickerSkeleton.classList.add('hidden');
+  if (resultStickerImg) resultStickerImg.classList.remove('hidden');
+  if (resultStage) resultStage.classList.remove('hidden');
 
-  let revealed = false;
-  const revealResultStage = () => {
-    if (revealed) return;
-    revealed = true;
-    if (stickerSkeleton) stickerSkeleton.classList.add('hidden');
-    if (resultStickerImg) resultStickerImg.classList.remove('hidden');
-    if (resultStage) resultStage.classList.remove('hidden');
-  };
+  // Set image source: instant in-memory dataUrl or direct GIF URL
+  const targetSrc = sticker.dataUrl || `${sticker.gifUrl || sticker.viewUrl}#stickers.gif`;
+  resultStickerImg.src = targetSrc;
 
-  // 1. Immediately set the image src so the browser starts loading and displaying it RIGHT AWAY!
-  const directUrl = `${sticker.gifUrl || sticker.viewUrl}#stickers.gif`;
-  resultStickerImg.onload = () => revealResultStage();
-  resultStickerImg.onerror = () => revealResultStage();
-  resultStickerImg.src = directUrl;
-
-  // Safety fallback: if onload is slow or delayed, NEVER stay stuck!
-  setTimeout(revealResultStage, 900);
-
-  if (resultStickerImg.complete && resultStickerImg.naturalWidth > 0) {
-    revealResultStage();
-  }
-
-  // 2. Pre-cache GIF blob quietly in background for instantaneous clipboard copying and update src with local blob
-  (async () => {
-    try {
-      const gifUrl = sticker.gifUrl || sticker.viewUrl;
-      const gifResp = await fetch(gifUrl);
-      if (gifResp.ok) {
-        currentStickerData.cachedGifBlob = await gifResp.blob();
-        console.log('[Sticker] GIF blob cached for clipboard (' + currentStickerData.cachedGifBlob.size + ' bytes)');
-        const localBlobUrl = URL.createObjectURL(currentStickerData.cachedGifBlob);
-        resultStickerImg.src = `${localBlobUrl}#stickers.gif`;
+  // Background fetch for clipboard caching ONLY if in-memory blob was not already present
+  if (!currentStickerData.cachedGifBlob) {
+    (async () => {
+      try {
+        const gifUrl = sticker.gifUrl || sticker.viewUrl;
+        const gifResp = await fetch(gifUrl);
+        if (gifResp.ok) {
+          currentStickerData.cachedGifBlob = await gifResp.blob();
+          console.log('[Sticker] GIF blob cached for clipboard (' + currentStickerData.cachedGifBlob.size + ' bytes)');
+        }
+      } catch (e) {
+        console.warn('Background GIF blob caching warning:', e);
       }
-    } catch (e) {
-      console.warn('Background GIF blob caching warning:', e);
-    }
-  })();
+    })();
+  }
 
   // Box 2 switches view in-place from Trimming/Crop to Sticker Result!
   if (studioEditorView) studioEditorView.classList.add('hidden');

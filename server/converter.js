@@ -228,6 +228,7 @@ export async function convertAnimatedToGif({
   const args = [
     '-y',
     '-nostdin',
+    '-threads', '0',
     '-ss', safeStart.toString(),
     '-t', safeDuration.toString(),
     '-i', inputPath,
@@ -288,6 +289,7 @@ export async function convertStaticToGif({ inputPath, outputPath, cropMode = 'fi
   await runFfmpeg([
     '-y',
     '-nostdin',
+    '-threads', '0',
     '-i', inputPath,
     '-vf', gifFilter,
     '-loop', '0',

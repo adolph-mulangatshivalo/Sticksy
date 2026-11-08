@@ -411,6 +411,7 @@ app.post('/api/create-sticker', async (req, res) => {
   try {
     const {
       url: rawUrl,
+      videoUrl: directVideoUrl,
       startTime = 0,
       duration = 5.0,
       cropMode = 'fit',
@@ -434,8 +435,19 @@ app.post('/api/create-sticker', async (req, res) => {
       return res.status(400).json({ error: 'Please provide a valid URL starting with http:// or https://' });
     }
 
-    // Step 1: Download media
-    downloadedPath = await downloadMedia(url.trim(), tempDir, filePrefix);
+    // Step 1: Download media (prefer direct stream URL if provided to avoid 5-10s yt-dlp re-scraping)
+    try {
+      const preferredUrl = (directVideoUrl && typeof directVideoUrl === 'string' && directVideoUrl.startsWith('http'))
+        ? directVideoUrl
+        : url.trim();
+      downloadedPath = await downloadMedia(preferredUrl.trim(), tempDir, filePrefix);
+    } catch (directErr) {
+      if (directVideoUrl && url) {
+        downloadedPath = await downloadMedia(url.trim(), tempDir, filePrefix);
+      } else {
+        throw directErr;
+      }
+    }
 
     const ext = path.extname(downloadedPath).toLowerCase();
     const isVideo = ['.mp4', '.webm', '.mov', '.gif', '.mkv', '.avi'].includes(ext);
@@ -480,6 +492,14 @@ app.post('/api/create-sticker', async (req, res) => {
     }
 
     const stickerId = `${filePrefix}_sticker`;
+    let dataUrl = null;
+    try {
+      if (fs.existsSync(outputGifPath)) {
+        const gifBuf = fs.readFileSync(outputGifPath);
+        dataUrl = `data:image/gif;base64,${gifBuf.toString('base64')}`;
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       id: stickerId,
@@ -488,6 +508,7 @@ app.post('/api/create-sticker', async (req, res) => {
       animated: result.animated !== undefined ? result.animated : isVideo,
       duration: result.duration || null,
       format: 'gif',
+      dataUrl,
       viewUrl: `/api/sticker/${stickerId}.gif`,
       gifUrl: `/api/sticker/${stickerId}.gif`,
       mp4Url: `/api/sticker/${stickerId}.mp4`,
@@ -581,6 +602,14 @@ app.post('/api/upload-sticker', upload.single('media'), async (req, res) => {
     } catch (e) {}
 
     const stickerId = `${filePrefix}_sticker`;
+    let dataUrl = null;
+    try {
+      if (fs.existsSync(outputGifPath)) {
+        const gifBuf = fs.readFileSync(outputGifPath);
+        dataUrl = `data:image/gif;base64,${gifBuf.toString('base64')}`;
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       id: stickerId,
@@ -589,6 +618,7 @@ app.post('/api/upload-sticker', upload.single('media'), async (req, res) => {
       animated: result.animated !== undefined ? result.animated : isVideo,
       duration: result.duration || null,
       format: 'gif',
+      dataUrl,
       viewUrl: `/api/sticker/${stickerId}.gif`,
       gifUrl: `/api/sticker/${stickerId}.gif`,
       mp4Url: `/api/sticker/${stickerId}.mp4`,
