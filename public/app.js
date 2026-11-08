@@ -1626,7 +1626,7 @@ function displayResult(sticker) {
   };
 
   // 1. Immediately set the image src so the browser starts loading and displaying it RIGHT AWAY!
-  const directUrl = `${sticker.viewUrl || sticker.gifUrl}?t=${Date.now()}`;
+  const directUrl = `${sticker.gifUrl || sticker.viewUrl}#stickers.gif`;
   resultStickerImg.onload = () => revealResultStage();
   resultStickerImg.onerror = () => revealResultStage();
   resultStickerImg.src = directUrl;
@@ -1668,26 +1668,58 @@ function displayResult(sticker) {
 // Function: Copy pure animated GIF to clipboard
 async function copyGifToClipboard() {
   let gifBlob = currentStickerData?.cachedGifBlob;
-  if (!gifBlob) {
-    const gifUrl = currentStickerData?.gifUrl || currentStickerData?.viewUrl || resultStickerImg?.src;
-    if (gifUrl) {
-      try {
-        const resp = await fetch(gifUrl);
-        if (resp.ok) {
-          gifBlob = await resp.blob();
-          currentStickerData.cachedGifBlob = gifBlob;
-        }
-      } catch (e) {}
+  const gifUrl = currentStickerData?.gifUrl || currentStickerData?.viewUrl || resultStickerImg?.src;
+  if (!gifBlob && gifUrl) {
+    try {
+      const resp = await fetch(gifUrl);
+      if (resp.ok) {
+        gifBlob = await resp.blob();
+        currentStickerData.cachedGifBlob = gifBlob;
+      }
+    } catch (e) {}
+  }
+
+  let copied = false;
+
+  // 1. Modern Async Clipboard API: pure image/gif write if supported
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      if (window.ClipboardItem.supports && window.ClipboardItem.supports('image/gif') && gifBlob) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/gif': gifBlob })]);
+        copied = true;
+        console.log('[Clipboard] Copied pure animated GIF via Async Clipboard API');
+      } else if (gifUrl) {
+        // Write HTML image tag so clipboard consumers (including WhatsApp) parse the animated GIF
+        const cleanUrl = gifUrl.startsWith('http') ? gifUrl : `${window.location.origin}${gifUrl}`;
+        const htmlBlob = new Blob([`<img src="${cleanUrl}">`], { type: 'text/html' });
+        const textBlob = new Blob([cleanUrl], { type: 'text/plain' });
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': htmlBlob,
+            'text/plain': textBlob
+          })
+        ]);
+        copied = true;
+        console.log('[Clipboard] Copied GIF HTML snippet via Async Clipboard API');
+      }
+    } catch (errA) {
+      console.warn('[Clipboard] Async write notice:', errA.message);
     }
   }
 
-  // Modern Async Clipboard API: pure image/gif write (never downgrade to PNG!)
-  if (navigator.clipboard && window.ClipboardItem && gifBlob) {
+  // 2. Native DOM selection fallback (triggers browser native image copy)
+  if (!copied && resultStickerImg) {
     try {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/gif': gifBlob })]);
-      console.log('[Clipboard] Copied pure animated GIF via Async Clipboard API');
-    } catch (errA) {
-      console.warn('[Clipboard] Async write notice:', errA.message);
+      const range = document.createRange();
+      range.selectNode(resultStickerImg);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      copied = document.execCommand('copy');
+      sel.removeAllRanges();
+      if (copied) console.log('[Clipboard] Copied via native DOM image selection');
+    } catch (errB) {
+      console.warn('[Clipboard] DOM copy notice:', errB.message);
     }
   }
 
