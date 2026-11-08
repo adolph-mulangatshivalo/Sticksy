@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800;900&family=Space+Grotesk:wght@700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/cropper.min.css">
-  <link rel="stylesheet" href="style.css?v=3.3.0">
+  <link rel="stylesheet" href="style.css?v=3.4.0">
 </head>
 <body>
   <!-- Playful Neo-Brutalist Floating Accents -->
@@ -265,7 +265,9 @@
         <!-- 2. VIDEO CROPPER & TRIMMER CONTAINER -->
         <div id="videoTrimContainer" class="trim-editor-wrap hidden">
           <div class="video-preview-frame" id="videoPreviewFrame">
-            <video id="previewVideo" class="preview-video-player" playsinline webkit-playsinline muted autoplay loop></video>
+            <div id="videoMediaViewport" class="video-media-viewport">
+              <video id="previewVideo" class="preview-video-player" playsinline webkit-playsinline muted autoplay loop></video>
+            </div>
             
             <div id="videoLoadingOverlay" class="video-loading-overlay hidden">
               <div class="neo-video-loader-card">
@@ -295,6 +297,39 @@
                 <div class="v-handle v-handle-s" data-handle="s"></div>
                 <div class="v-handle v-handle-e" data-handle="e"></div>
                 <div class="v-handle v-handle-w" data-handle="w"></div>
+              </div>
+            </div>
+
+            <!-- Portrait Floating Controls (Zoom In, Zoom Out, Joystick - Portrait Only) -->
+            <div id="portraitControlsPanel" class="portrait-controls-panel hidden">
+              <!-- Top: Zoom In -->
+              <button type="button" id="btnZoomIn" class="portrait-circle-btn" title="Zoom In" aria-label="Zoom In">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  <line x1="11" y1="8" x2="11" y2="14"></line>
+                  <line x1="8" y1="11" x2="14" y2="11"></line>
+                </svg>
+              </button>
+
+              <!-- Middle: Zoom Out -->
+              <button type="button" id="btnZoomOut" class="portrait-circle-btn" title="Zoom Out" aria-label="Zoom Out">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  <line x1="8" y1="11" x2="14" y2="11"></line>
+                </svg>
+              </button>
+
+              <!-- Bottom: Joystick Pan Controller -->
+              <div id="portraitJoystick" class="portrait-joystick" title="Joystick - Drag to move media" aria-label="Joystick Pan Controller">
+                <div class="joystick-ring">
+                  <span class="j-dir j-up">▲</span>
+                  <span class="j-dir j-down">▼</span>
+                  <span class="j-dir j-left">◀</span>
+                  <span class="j-dir j-right">▶</span>
+                  <div id="joystickKnob" class="joystick-knob"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -560,6 +595,6 @@
   </div>
 
   <script src="vendor/cropper.min.js"></script>
-  <script src="app.js?v=3.3.0"></script>
+  <script src="app.js?v=3.4.0"></script>
 </body>
 </html>

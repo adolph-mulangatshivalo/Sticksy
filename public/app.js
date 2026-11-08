@@ -81,6 +81,13 @@ const txtPlayPause = document.getElementById('txtPlayPause');
 const btnVideoResetCrop = document.getElementById('btnVideoResetCrop');
 const videoCropHintText = document.getElementById('videoCropHintText');
 
+// Portrait-Only Floating Controls Elements (Zoom In, Zoom Out, Joystick)
+const portraitControlsPanel = document.getElementById('portraitControlsPanel');
+const btnZoomIn = document.getElementById('btnZoomIn');
+const btnZoomOut = document.getElementById('btnZoomOut');
+const portraitJoystick = document.getElementById('portraitJoystick');
+const joystickKnob = document.getElementById('joystickKnob');
+
 // Visual Timeline Scrubber Elements
 const timelineTrack = document.getElementById('timelineTrack');
 const timelineFilmstrip = document.getElementById('timelineFilmstrip');
@@ -246,6 +253,8 @@ if (btnVideoRatioFree) {
     if (rect) {
       videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
       renderVideoCropBox();
+      resetMediaTransform();
+      updatePortraitControlsPosition();
     }
 
     if (videoCropHintText) {
@@ -288,6 +297,8 @@ if (btnVideoResetCrop) {
     if (rect) {
       videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
       renderVideoCropBox();
+      resetMediaTransform();
+      updatePortraitControlsPosition();
     }
     if (videoCropHintText) {
       videoCropHintText.textContent = 'Crop reset to cover whole media';
@@ -445,19 +456,20 @@ function getVideoRenderedRect() {
     return null;
   }
 
+  const viewport = document.getElementById('videoMediaViewport') || previewVideo;
   const frameRect = videoPreviewFrame.getBoundingClientRect();
-  const vidRect = previewVideo.getBoundingClientRect();
+  const vpRect = viewport.getBoundingClientRect();
 
-  if (vidRect.width <= 0 || vidRect.height <= 0) return null;
+  if (vpRect.width <= 0 || vpRect.height <= 0) return null;
 
   // Account for frame's native CSS borders so coordinates match absolute positioning padding-box
   const borderLeft = videoPreviewFrame.clientLeft || 0;
   const borderTop = videoPreviewFrame.clientTop || 0;
 
-  const left = Math.max(0, Math.round(vidRect.left - frameRect.left - borderLeft));
-  const top = Math.max(0, Math.round(vidRect.top - frameRect.top - borderTop));
-  const width = Math.round(vidRect.width);
-  const height = Math.round(vidRect.height);
+  const left = Math.max(0, Math.round(vpRect.left - frameRect.left - borderLeft));
+  const top = Math.max(0, Math.round(vpRect.top - frameRect.top - borderTop));
+  const width = Math.round(viewport.offsetWidth || vpRect.width);
+  const height = Math.round(viewport.offsetHeight || vpRect.height);
 
   return { left, top, width, height };
 }
@@ -488,6 +500,7 @@ function initVideoCropOverlay() {
     // Never reset when the video loops or on time updates!
     if (videoCropState.isCustomCropped && videoCropState.box && videoCropState.box.width > 0) {
       renderVideoCropBox();
+      updatePortraitControlsVisibility();
       return;
     }
 
@@ -503,6 +516,7 @@ function initVideoCropOverlay() {
       videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
     }
     renderVideoCropBox();
+    updatePortraitControlsVisibility();
   };
 
   requestAnimationFrame(applySize);
@@ -512,6 +526,7 @@ window.addEventListener('resize', () => {
   if (previewVideo && !videoTrimContainer?.classList.contains('hidden')) {
     initVideoCropOverlay();
   }
+  updatePortraitControlsVisibility();
 });
 
 function renderVideoCropBox() {
@@ -563,7 +578,41 @@ function renderVideoCropBox() {
   }
 }
 
-// Convert video crop box coordinates to native video pixel coordinates for FFmpeg
+// Media Pan & Zoom Transform State (Controls the MEDIA, not the cropper!)
+let mediaTransform = {
+  zoom: 1.0,
+  panX: 0,
+  panY: 0
+};
+
+function applyMediaTransform() {
+  if (isVideoActive() && previewVideo) {
+    previewVideo.style.transform = `translate(${mediaTransform.panX}px, ${mediaTransform.panY}px) scale(${mediaTransform.zoom})`;
+    previewVideo.style.transformOrigin = 'center center';
+  }
+}
+
+function clampMediaPan() {
+  const rect = getVideoRenderedRect();
+  const w = rect ? rect.width : (previewVideo?.offsetWidth || 200);
+  const h = rect ? rect.height : (previewVideo?.offsetHeight || 290);
+
+  // Maximum allowed pan based on zoom overflow
+  const maxPanX = Math.max(0, ((mediaTransform.zoom - 1) * w) / 2);
+  const maxPanY = Math.max(0, ((mediaTransform.zoom - 1) * h) / 2);
+
+  mediaTransform.panX = Math.max(-maxPanX, Math.min(mediaTransform.panX, maxPanX));
+  mediaTransform.panY = Math.max(-maxPanY, Math.min(mediaTransform.panY, maxPanY));
+}
+
+function resetMediaTransform() {
+  mediaTransform.zoom = 1.0;
+  mediaTransform.panX = 0;
+  mediaTransform.panY = 0;
+  applyMediaTransform();
+}
+
+// Convert video crop box coordinates and media transform to native video pixel coordinates for FFmpeg
 function getVideoCropData() {
   if (!previewVideo || !videoCropState.box || !videoCropState.box.width) return null;
   const rect = getVideoRenderedRect();
@@ -574,22 +623,34 @@ function getVideoCropData() {
   if (!natW || !natH) return null;
 
   const { left, top, width, height } = videoCropState.box;
+  const isMediaTransformed = mediaTransform.zoom > 1.005 || Math.abs(mediaTransform.panX) > 1 || Math.abs(mediaTransform.panY) > 1;
 
-  // If freeform and covering ~100% without custom adjustments, return null to keep entire video without crop/zoom!
-  if (!videoCropState.isCustomCropped && videoCropState.ratio === 'free') {
+  // If unconstrained freeform covering ~100% and media is not zoomed/panned, return null to keep entire video without crop!
+  if (!isMediaTransformed && !videoCropState.isCustomCropped && videoCropState.ratio === 'free') {
     return null;
   }
-  if (videoCropState.ratio === 'free' && left <= 3 && top <= 3 && width >= rect.width - 6 && height >= rect.height - 6) {
+  if (!isMediaTransformed && videoCropState.ratio === 'free' && left <= 3 && top <= 3 && width >= rect.width - 6 && height >= rect.height - 6) {
     return null;
   }
+
+  // Account for media zoom and pan relative to viewport
+  const zoom = mediaTransform.zoom || 1.0;
+  const panX = mediaTransform.panX || 0;
+  const panY = mediaTransform.panY || 0;
+
+  // Map crop box on screen back to unscaled video coordinates
+  const vLeft = (rect.width / 2) + (left - (rect.width / 2) - panX) / zoom;
+  const vTop = (rect.height / 2) + (top - (rect.height / 2) - panY) / zoom;
+  const vWidth = width / zoom;
+  const vHeight = height / zoom;
 
   const scaleX = natW / rect.width;
   const scaleY = natH / rect.height;
 
-  const cropX = Math.max(0, Math.min(natW - 10, Math.round(left * scaleX)));
-  const cropY = Math.max(0, Math.min(natH - 10, Math.round(top * scaleY)));
-  const cropW = Math.max(10, Math.min(natW - cropX, Math.round(width * scaleX)));
-  const cropH = Math.max(10, Math.min(natH - cropY, Math.round(height * scaleY)));
+  const cropX = Math.max(0, Math.min(natW - 10, Math.round(vLeft * scaleX)));
+  const cropY = Math.max(0, Math.min(natH - 10, Math.round(vTop * scaleY)));
+  const cropW = Math.max(10, Math.min(natW - cropX, Math.round(vWidth * scaleX)));
+  const cropH = Math.max(10, Math.min(natH - cropY, Math.round(vHeight * scaleY)));
 
   return {
     x: cropX,
@@ -598,6 +659,228 @@ function getVideoCropData() {
     height: cropH
   };
 }
+
+// ==========================================================================
+// Portrait-Only Floating Controls (Zoom In, Zoom Out, Joystick)
+// ==========================================================================
+
+function isVideoActive() {
+  return (currentMediaData && currentMediaData.type === 'video') ||
+         (videoTrimContainer && !videoTrimContainer.classList.contains('hidden'));
+}
+
+function isCurrentMediaPortrait() {
+  if (isVideoActive()) {
+    if (!previewVideo || !previewVideo.videoWidth || !previewVideo.videoHeight) return false;
+    // Strictly portrait only: height must be strictly greater than width!
+    // Never show for landscape or square!
+    return previewVideo.videoHeight > previewVideo.videoWidth;
+  } else {
+    if (!cropperImage || !cropperImage.naturalWidth || !cropperImage.naturalHeight) return false;
+    return cropperImage.naturalHeight > cropperImage.naturalWidth;
+  }
+}
+
+function updatePortraitControlsPosition() {
+  if (!portraitControlsPanel || portraitControlsPanel.classList.contains('hidden')) return;
+
+  if (isVideoActive() && videoPreviewFrame && videoTrimContainer) {
+    const frameRect = videoPreviewFrame.getBoundingClientRect();
+    const containerRect = videoTrimContainer.getBoundingClientRect();
+    const rightGutter = containerRect.right - frameRect.right;
+
+    if (rightGutter >= 54) {
+      const offset = Math.max(8, Math.round((rightGutter - 52) / 2));
+      portraitControlsPanel.style.left = `calc(100% + ${offset}px)`;
+      portraitControlsPanel.style.right = 'auto';
+    } else {
+      portraitControlsPanel.style.left = 'auto';
+      portraitControlsPanel.style.right = '4px';
+    }
+  } else {
+    portraitControlsPanel.style.left = 'auto';
+    portraitControlsPanel.style.right = '8px';
+  }
+}
+
+function updatePortraitControlsVisibility() {
+  if (!portraitControlsPanel) return;
+
+  const isPortrait = isCurrentMediaPortrait();
+  if (!isPortrait) {
+    portraitControlsPanel.classList.add('hidden');
+    return;
+  }
+
+  if (isVideoActive()) {
+    if (videoPreviewFrame && portraitControlsPanel.parentElement !== videoPreviewFrame) {
+      videoPreviewFrame.appendChild(portraitControlsPanel);
+    }
+  } else {
+    const cropFrame = document.querySelector('#imageCropContainer .crop-frame');
+    if (cropFrame && portraitControlsPanel.parentElement !== cropFrame) {
+      cropFrame.appendChild(portraitControlsPanel);
+    }
+  }
+
+  portraitControlsPanel.classList.remove('hidden');
+  updatePortraitControlsPosition();
+}
+
+function zoomMedia(factor, isOut = false) {
+  if (isVideoActive()) {
+    if (!previewVideo) return;
+
+    let newZoom = mediaTransform.zoom * factor;
+    if (newZoom < 1.0) newZoom = 1.0;
+    if (newZoom > 4.0) newZoom = 4.0;
+
+    mediaTransform.zoom = Math.round(newZoom * 1000) / 1000;
+    clampMediaPan();
+    applyMediaTransform();
+  } else if (cropperInstance) {
+    cropperInstance.zoom(isOut ? -0.15 : 0.15);
+  }
+}
+
+function setupZoomButton(btn, zoomFn) {
+  if (!btn) return;
+  let zoomTimer = null;
+  let zoomInterval = null;
+  let pointerHandled = false;
+
+  const startZoom = (e) => {
+    e.preventDefault();
+    pointerHandled = true;
+    btn.classList.add('pressing');
+    zoomFn();
+    zoomTimer = setTimeout(() => {
+      zoomInterval = setInterval(() => {
+        zoomFn();
+      }, 75);
+    }, 240);
+  };
+
+  const stopZoom = () => {
+    btn.classList.remove('pressing');
+    if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null; }
+    if (zoomInterval) { clearInterval(zoomInterval); zoomInterval = null; }
+    setTimeout(() => { pointerHandled = false; }, 100);
+  };
+
+  btn.addEventListener('pointerdown', startZoom);
+  btn.addEventListener('pointerup', stopZoom);
+  btn.addEventListener('pointercancel', stopZoom);
+  btn.addEventListener('pointerleave', stopZoom);
+
+  btn.addEventListener('click', (e) => {
+    if (!pointerHandled) {
+      zoomFn();
+    }
+  });
+}
+
+setupZoomButton(btnZoomIn, () => zoomMedia(1.15, false));
+setupZoomButton(btnZoomOut, () => zoomMedia(1 / 1.15, true));
+
+function setupPortraitJoystick() {
+  if (!portraitJoystick || !joystickKnob) return;
+
+  let isDragging = false;
+  let originX = 0;
+  let originY = 0;
+  let normX = 0;
+  let normY = 0;
+  let animId = null;
+  const maxRadius = 16;
+
+  const panLoop = () => {
+    if (!isDragging) return;
+
+    if (Math.abs(normX) > 0.06 || Math.abs(normY) > 0.06) {
+      if (isVideoActive()) {
+        const speed = 3.2;
+        mediaTransform.panX += normX * speed;
+        mediaTransform.panY += normY * speed;
+
+        clampMediaPan();
+        applyMediaTransform();
+      } else if (cropperInstance) {
+        cropperInstance.move(-normX * 4, -normY * 4);
+      }
+    }
+
+    animId = requestAnimationFrame(panLoop);
+  };
+
+  const onPointerDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDragging = true;
+    portraitJoystick.classList.add('dragging');
+
+    joystickKnob.style.transition = 'none';
+
+    const rect = portraitJoystick.getBoundingClientRect();
+    originX = rect.left + rect.width / 2;
+    originY = rect.top + rect.height / 2;
+
+    try { portraitJoystick.setPointerCapture(e.pointerId); } catch (err) {}
+
+    updateKnobPosition(e.clientX, e.clientY);
+
+    if (!animId) {
+      animId = requestAnimationFrame(panLoop);
+    }
+  };
+
+  const updateKnobPosition = (clientX, clientY) => {
+    const dx = clientX - originX;
+    const dy = clientY - originY;
+    const dist = Math.hypot(dx, dy);
+
+    let clampedX = dx;
+    let clampedY = dy;
+    if (dist > maxRadius) {
+      clampedX = (dx / dist) * maxRadius;
+      clampedY = (dy / dist) * maxRadius;
+    }
+
+    joystickKnob.style.transform = `translate(${clampedX}px, ${clampedY}px)`;
+    normX = clampedX / maxRadius;
+    normY = clampedY / maxRadius;
+  };
+
+  const onPointerMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    updateKnobPosition(e.clientX, e.clientY);
+  };
+
+  const onPointerUp = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    portraitJoystick.classList.remove('dragging');
+
+    normX = 0;
+    normY = 0;
+    if (animId) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
+
+    joystickKnob.style.transition = 'transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    joystickKnob.style.transform = 'translate(0px, 0px)';
+
+    try { portraitJoystick.releasePointerCapture(e.pointerId); } catch (err) {}
+  };
+
+  portraitJoystick.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+}
+setupPortraitJoystick();
 
 // Ratio Toggle: Freeform vs Square 1:1
 btnRatioFree.addEventListener('click', () => {
@@ -870,6 +1153,8 @@ function handleFileUpload(file) {
 
 // Display Preview, Cropper, and Trimmer
 function displayPreview(info) {
+  currentMediaData = info;
+  resetMediaTransform();
   clearAlert();
   if (studioEditorView) studioEditorView.classList.remove('hidden');
   if (studioResultView) studioResultView.classList.add('hidden');
@@ -880,6 +1165,7 @@ function displayPreview(info) {
   badgeIcon.innerHTML = ICONS[platformId] || ICONS.web;
   badgeText.textContent = info.platform?.name || 'Media';
   mediaTitle.textContent = info.title || 'Extracted Media';
+  if (portraitControlsPanel) portraitControlsPanel.classList.add('hidden');
 
   // Destroy previous cropper instance if active
   if (cropperInstance) {
@@ -913,6 +1199,7 @@ function displayPreview(info) {
       const dur = previewVideo.duration || info.duration || 5.0;
       initVideoTrimmer(dur);
       initVideoCropOverlay();
+      updatePortraitControlsVisibility();
       if (videoSrc) generateVideoFilmstrip(videoSrc, dur);
       autoScrollToCropper();
     };
@@ -1024,6 +1311,7 @@ function displayPreview(info) {
       if (previewSkeleton) previewSkeleton.classList.add('hidden');
       imageCropContainer.style.opacity = '1';
       imageCropContainer.style.pointerEvents = 'auto';
+      updatePortraitControlsVisibility();
       autoScrollToCropper();
     };
 
