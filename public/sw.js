@@ -1,5 +1,5 @@
-// Sticksy Service Worker v3.3.0
-const CACHE_NAME = 'sticksy-core-v29';
+// Sticksy Service Worker v3.5.0
+const CACHE_NAME = 'sticksy-core-v30';
 
 const STATIC_ASSETS = [
   '/',

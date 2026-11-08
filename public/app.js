@@ -2027,19 +2027,8 @@ async function copyGifToClipboard() {
   return true;
 }
 
-// Helper: Launch native WhatsApp application (Android direct app launcher intent, iOS & Desktop whatsapp://)
+// Helper: Launch native WhatsApp application directly across Android, iOS, Windows, and macOS
 function openWhatsAppApp() {
-  const ua = navigator.userAgent || '';
-  const isAndroid = /Android/i.test(ua);
-
-  if (isAndroid) {
-    // Android native launcher intent: opens WhatsApp cleanly to chats list without "send" intent errors!
-    window.location.href = 'intent:#Intent;package=com.whatsapp;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end;';
-    return;
-  }
-
-  // iOS (iPhone/iPad), Windows Desktop App, and macOS Desktop App
-  // whatsapp:// triggers the registered native WhatsApp client directly
   try {
     const a = document.createElement('a');
     a.href = 'whatsapp://';

@@ -260,7 +260,7 @@ export async function getYouTubeVisitorData() {
 
 /**
  * Fast & reliable YouTube extractor for Shorts, regular videos, and mobile links.
- * Bypasses datacenter bot blocks using mobile player clients and oEmbed API.
+ * Extracts direct progressive MP4 streams for immediate HTML5 playback in the trimmer.
  */
 export async function extractYouTubeDirect(rawUrl) {
   try {
@@ -273,7 +273,7 @@ export async function extractYouTubeDirect(rawUrl) {
     let title = 'YouTube Video';
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
+      const timeout = setTimeout(() => controller.abort(), 3000);
       const oeRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(canonicalUrl)}&format=json`, {
         signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
@@ -287,21 +287,16 @@ export async function extractYouTubeDirect(rawUrl) {
 
     const thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-    // 2. Fetch progressive stream URL using dynamic visitor token & embedded player clients
-    const visitorData = await getYouTubeVisitorData();
+    // 2. Fetch progressive stream URL using embedded player clients
     const streamUrl = await new Promise((resolve) => {
       const args = [
         '-m', 'yt_dlp',
         '--remote-components', 'ejs:github',
         '--js-runtimes', 'node',
         '--no-warnings',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=tv_embedded,android_embedded'
       ];
-      if (visitorData) {
-        args.push('--extractor-args', `youtube:player_client=android_embedded,tv_embedded;visitor_data=${visitorData}`);
-      } else {
-        args.push('--extractor-args', 'youtube:player_client=android_embedded,tv_embedded');
-      }
       if (process.env.YT_COOKIES) {
         const cookieFile = path.resolve('temp', 'yt_cookies.txt');
         try {
@@ -309,14 +304,14 @@ export async function extractYouTubeDirect(rawUrl) {
           args.push('--cookies', cookieFile);
         } catch (_) {}
       }
-      args.push('-g', '-f', 'b[ext=mp4]/best[ext=mp4]/bv*+ba/b', canonicalUrl);
+      args.push('-g', '-f', '18/b[ext=mp4]/best[ext=mp4]/bv*+ba/b', canonicalUrl);
 
       const proc = spawn(PYTHON_BIN, args);
       let out = '';
       const timer = setTimeout(() => {
         try { proc.kill(); } catch (_) {}
         resolve(null);
-      }, 7000);
+      }, 15000);
 
       proc.stdout.on('data', (d) => { out += d.toString(); });
       proc.on('close', (code) => {
@@ -334,14 +329,19 @@ export async function extractYouTubeDirect(rawUrl) {
       });
     });
 
-    return {
-      title,
-      thumbnail,
-      videoUrl: streamUrl,
-      type: streamUrl ? 'video' : 'image',
-      duration: streamUrl ? 10 : null,
-      platform: { id: 'youtube', name: 'YouTube', icon: '▶️' }
-    };
+    if (streamUrl) {
+      return {
+        title,
+        thumbnail,
+        videoUrl: streamUrl,
+        type: 'video',
+        duration: 10,
+        platform: { id: 'youtube', name: 'YouTube', icon: '▶️' }
+      };
+    }
+
+    // Do NOT return type: 'image' - let step 9 metadata dump attempt extraction
+    return null;
   } catch (e) {
     // fallback
   }
@@ -349,125 +349,198 @@ export async function extractYouTubeDirect(rawUrl) {
 }
 
 /**
+ * SnapSave API Extractor for Facebook videos, reels, and watch links.
+ * Decodes Dean Edwards packed JS to extract direct fbcdn.net stream URLs.
+ */
+async function extractSnapSaveFacebook(fbUrl) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch('https://snapsave.app/action.php?lang=en', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Origin': 'https://snapsave.app',
+        'Referer': 'https://snapsave.app/'
+      },
+      body: new URLSearchParams({ url: fbUrl }).toString()
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const text = await res.text();
+    const lastEval = text.lastIndexOf('eval(');
+    if (lastEval === -1) return null;
+    const modified = text.slice(0, lastEval) + 'return (' + text.slice(lastEval + 5);
+    const fn = new Function(modified);
+    const decoded = fn();
+    if (!decoded || decoded.includes('Error:') || decoded.includes('alert-box')) return null;
+
+    const tokens = [...decoded.matchAll(/token=([a-zA-Z0-9_\-\.]+)/g)].map(m => m[1]);
+    let videoUrl = null;
+    let thumbnailUrl = null;
+
+    for (const token of tokens) {
+      const parts = token.split('.');
+      if (parts.length >= 2) {
+        try {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+          if (payload.url) {
+            if (payload.url.includes('.mp4') || payload.filename?.endsWith('.mp4') || payload.url.includes('video')) {
+              if (!videoUrl) videoUrl = payload.url;
+            }
+            if (payload.url.includes('.avif') || payload.url.includes('.jpg') || payload.url.includes('thumb')) {
+              if (!thumbnailUrl) thumbnailUrl = payload.url;
+            }
+          }
+          if (payload.video_url && !videoUrl) {
+            videoUrl = payload.video_url;
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (videoUrl || thumbnailUrl) {
+      return {
+        title: 'Facebook Video',
+        thumbnail: thumbnailUrl || videoUrl,
+        videoUrl,
+        type: videoUrl ? 'video' : 'image',
+        duration: 5,
+        platform: { id: 'facebook', name: 'Facebook', icon: '📘' }
+      };
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
+ * SaveF API Extractor for Facebook videos and mobile share links.
+ */
+async function extractSaveFFacebook(fbUrl) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch('https://savef.app/api/ajaxSearch', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Origin': 'https://savef.app',
+        'Referer': 'https://savef.app/'
+      },
+      body: new URLSearchParams({ q: fbUrl, t: 'media', lang: 'en' }).toString()
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json || !json.data) return null;
+    const html = json.data;
+
+    let videoUrl = null;
+    let hdVideoUrl = null;
+    let sdVideoUrl = null;
+
+    const downloadMatches = [...html.matchAll(/href="([^"]+)"[^>]*title="([^"]*)"/gi)];
+    for (const m of downloadMatches) {
+      const href = m[1];
+      const title = (m[2] || '').toLowerCase();
+      const decoded = decodeJwtUrl(href) || href;
+      if (decoded && (decoded.includes('.mp4') || decoded.includes('fbcdn.net'))) {
+        if (title.includes('hd') || title.includes('720') || title.includes('1080')) {
+          if (!hdVideoUrl) hdVideoUrl = decoded;
+        } else if (title.includes('sd') || title.includes('360')) {
+          if (!sdVideoUrl) sdVideoUrl = decoded;
+        } else if (!videoUrl) {
+          videoUrl = decoded;
+        }
+      }
+    }
+
+    if (!videoUrl && !hdVideoUrl && !sdVideoUrl) {
+      const tokenMatch = html.match(/href="([^"]*download\?token=[^"]+)"/i);
+      if (tokenMatch) {
+        const decoded = decodeJwtUrl(tokenMatch[1]);
+        if (decoded) videoUrl = decoded;
+      }
+    }
+
+    const finalVideoUrl = hdVideoUrl || sdVideoUrl || videoUrl;
+    const thumbImgMatch = html.match(/<img[^>]+src="([^"]+)"/i) || html.match(/poster="([^"]+)"/i);
+    let thumbnail = thumbImgMatch ? thumbImgMatch[1].replace(/&amp;/g, '&') : null;
+    if (thumbnail && thumbnail.includes('token=')) {
+      thumbnail = decodeJwtUrl(thumbnail) || thumbnail;
+    }
+
+    const durMatch = html.match(/<p>(\d+):(\d+)<\/p>/i);
+    let duration = 5;
+    if (durMatch) {
+      duration = parseInt(durMatch[1], 10) * 60 + parseInt(durMatch[2], 10);
+    }
+
+    const titleMatch = html.match(/<h3[^>]*>([^<]+)<\/h3>/i);
+    const title = (titleMatch && titleMatch[1].trim()) || 'Facebook Video';
+
+    if (finalVideoUrl || thumbnail) {
+      return {
+        title,
+        thumbnail: thumbnail || finalVideoUrl,
+        videoUrl: finalVideoUrl,
+        type: finalVideoUrl ? 'video' : 'image',
+        duration: finalVideoUrl ? duration : null,
+        platform: { id: 'facebook', name: 'Facebook', icon: '📘' }
+      };
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
  * Fast & reliable Facebook extractor for Reels, Videos, Watch, and mobile share links.
- * Uses SaveF high-speed API with direct Meta CDN MP4/JPEG token decoding,
+ * Uses SnapSave and SaveF high-speed APIs with direct Meta CDN MP4/JPEG token decoding,
  * with fallbacks to direct page regex and OpenGraph.
  */
 export async function extractFacebookDirect(url) {
   try {
     let targetUrl = url;
 
-    // Follow redirects for fb.watch or mobile share links (/share/r/, /share/v/)
+    // Follow redirects for fb.watch or mobile share links (/share/r/, /share/v/, /share/p/)
     if (targetUrl.includes('fb.watch') || targetUrl.includes('/share/')) {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 3500);
-        const headResp = await fetch(targetUrl, {
-          method: 'HEAD',
-          redirect: 'follow',
+        const redResp = await fetch(targetUrl, {
+          method: 'GET',
+          redirect: 'manual',
           signal: controller.signal,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
           }
         });
         clearTimeout(timeout);
-        if (headResp.url && !headResp.url.includes('login.php')) {
-          targetUrl = headResp.url;
+        const loc = redResp.headers.get('location');
+        if (loc && !loc.includes('login.php')) {
+          targetUrl = loc;
         }
       } catch (_) {}
     }
 
-    // 1. High-speed SaveF API (bypasses datacenter IP blocks, extracts direct fbcdn URLs)
-    const res = await fetch('https://savef.app/api/ajaxSearch', {
-      method: 'POST',
+    const cleanTargetUrl = targetUrl.split('?mibextid=')[0].split('&mibextid=')[0];
+
+    // 1. High-speed SnapSave API (direct fbcdn MP4 extraction)
+    const snapData = await extractSnapSaveFacebook(cleanTargetUrl) || (cleanTargetUrl !== url ? await extractSnapSaveFacebook(url) : null);
+    if (snapData && (snapData.videoUrl || snapData.thumbnail)) return snapData;
+
+    // 2. High-speed SaveF API fallback
+    const savefData = await extractSaveFFacebook(cleanTargetUrl) || (cleanTargetUrl !== url ? await extractSaveFFacebook(url) : null);
+    if (savefData && (savefData.videoUrl || savefData.thumbnail)) return savefData;
+
+    // 3. Direct HTML regex fallback with mobile user agent
+    const directRes = await fetch(cleanTargetUrl, {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Origin': 'https://savef.app',
-        'Referer': 'https://savef.app/'
-      },
-      body: new URLSearchParams({ q: targetUrl, t: 'media', lang: 'en' }).toString()
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      if (json && json.data) {
-        const html = json.data;
-
-        // 1a. Direct embedded <video> tag
-        const videoTagMatch = html.match(/<video[^>]+src="([^"]+)"/i);
-        let videoUrl = videoTagMatch ? videoTagMatch[1].replace(/&amp;/g, '&') : null;
-
-        // 1b. Download buttons (JWT tokens or direct links)
-        const downloadMatches = [...html.matchAll(/href="([^"]+)"[^>]*title="([^"]*)"/gi)];
-        let hdVideoUrl = null;
-        let sdVideoUrl = null;
-
-        for (const m of downloadMatches) {
-          const href = m[1];
-          const title = (m[2] || '').toLowerCase();
-          const decoded = decodeJwtUrl(href) || href;
-          if (decoded && (decoded.includes('.mp4') || decoded.includes('fbcdn.net'))) {
-            if (title.includes('hd') || title.includes('720') || title.includes('1080')) {
-              if (!hdVideoUrl) hdVideoUrl = decoded;
-            } else if (title.includes('sd') || title.includes('360')) {
-              if (!sdVideoUrl) sdVideoUrl = decoded;
-            } else if (!videoUrl) {
-              videoUrl = decoded;
-            }
-          }
-        }
-
-        // Fallback: search any token link inside table
-        if (!videoUrl && !hdVideoUrl && !sdVideoUrl) {
-          const tokenMatch = html.match(/href="([^"]*download\?token=[^"]+)"/i);
-          if (tokenMatch) {
-            const decoded = decodeJwtUrl(tokenMatch[1]);
-            if (decoded) videoUrl = decoded;
-          }
-        }
-
-        const finalVideoUrl = hdVideoUrl || sdVideoUrl || videoUrl;
-
-        // Thumbnail extraction
-        const thumbImgMatch = html.match(/<img[^>]+src="([^"]+)"/i) || html.match(/poster="([^"]+)"/i);
-        let thumbnail = thumbImgMatch ? thumbImgMatch[1].replace(/&amp;/g, '&') : null;
-        if (thumbnail && thumbnail.includes('token=')) {
-          thumbnail = decodeJwtUrl(thumbnail) || thumbnail;
-        }
-
-        // Duration extraction (e.g. <p>1:14</p>)
-        const durMatch = html.match(/<p>(\d+):(\d+)<\/p>/i);
-        let duration = 5;
-        if (durMatch) {
-          duration = parseInt(durMatch[1], 10) * 60 + parseInt(durMatch[2], 10);
-        }
-
-        const titleMatch = html.match(/<h3[^>]*>([^<]+)<\/h3>/i);
-        const title = (titleMatch && titleMatch[1].trim()) || 'Facebook Video';
-        const isVideo = Boolean(finalVideoUrl);
-
-        if (finalVideoUrl || thumbnail) {
-          return {
-            title,
-            thumbnail: thumbnail || finalVideoUrl,
-            videoUrl: finalVideoUrl,
-            type: isVideo ? 'video' : 'image',
-            duration: isVideo ? duration : null,
-            platform: { id: 'facebook', name: 'Facebook', icon: '📘' }
-          };
-        }
-      }
-    }
-  } catch (e) {
-    // continue to direct scrape fallback
-  }
-
-  // 2. Direct HTML regex fallback
-  try {
-    const directRes = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
       }
     });
@@ -1012,7 +1085,8 @@ export async function inspectMedia(rawUrl) {
             hasRealVideoFormat ||
             ['mp4', 'webm', 'mov', 'm3u8', 'flv', 'mkv'].includes(ext) ||
             /\.(mp4|webm|mov|m3u8)($|\?)/i.test(info.url || '') ||
-            (Boolean(info.is_video) && Boolean(info.duration && info.duration > 0))
+            (Boolean(info.is_video) && Boolean(info.duration && info.duration > 0)) ||
+            platform.id === 'youtube'
           );
           
           let videoUrl = null;
@@ -1088,19 +1162,44 @@ export async function inspectMedia(rawUrl) {
         }
       }
 
-      // 9c. If yt-dlp failed on YouTube, fallback to high-resolution thumbnail
+      // 9c. YouTube video recovery (never collapse YouTube to a static image!)
       if (platform.id === 'youtube') {
         const match = url.match(/(?:v=|shorts\/|youtu\.be\/|embed\/|v\/|watch\?v=|\/e\/)([a-zA-Z0-9_-]{11})/i);
         const videoId = match ? match[1] : null;
         if (videoId) {
-          resolve({
-            title: 'YouTube Video',
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-            videoUrl: null,
-            type: 'image',
-            platform
+          const recoveryUrl = await new Promise((res) => {
+            const proc = spawn(PYTHON_BIN, [
+              '-m', 'yt_dlp',
+              '--remote-components', 'ejs:github',
+              '--js-runtimes', 'node',
+              '--no-warnings',
+              '--no-playlist',
+              '--extractor-args', 'youtube:player_client=android,web',
+              '-g', '-f', '18/b[ext=mp4]/b',
+              `https://www.youtube.com/watch?v=${videoId}`
+            ]);
+            let rOut = '';
+            const rTimer = setTimeout(() => { try { proc.kill(); } catch (_) {} res(null); }, 10000);
+            proc.stdout.on('data', d => { rOut += d.toString(); });
+            proc.on('close', code => {
+              clearTimeout(rTimer);
+              if (code === 0 && rOut.trim()) res(rOut.trim().split('\n')[0]);
+              else res(null);
+            });
+            proc.on('error', () => { clearTimeout(rTimer); res(null); });
           });
-          return;
+
+          if (recoveryUrl) {
+            resolve({
+              title: 'YouTube Video',
+              thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              videoUrl: recoveryUrl,
+              type: 'video',
+              duration: 10,
+              platform
+            });
+            return;
+          }
         }
       }
 
