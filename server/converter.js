@@ -284,12 +284,15 @@ export async function convertStaticToGif({ inputPath, outputPath, cropMode = 'fi
   const webpPath = outputPath.replace(/\.gif$/i, '.webp');
   const mp4Path = outputPath.replace(/\.gif$/i, '.mp4');
 
-  // 1. Direct single-pass encode to GIF with exact 256 colors in ~80ms!
-  const gifFilter = `${filter},split[s0][s1];[s0]palettegen=max_colors=256:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=2`;
+  // 1. Direct single-pass encode to looping 2-frame GIF with exact 256 colors in ~60ms!
+  // Looping 2-frame animation ensures WhatsApp clipboard paste handler treats it as a sticker, not a static photo!
+  const gifFilter = `fps=2,${filter},split[s0][s1];[s0]palettegen=max_colors=256:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=2`;
   await runFfmpeg([
     '-y',
     '-nostdin',
     '-threads', '0',
+    '-loop', '1',
+    '-t', '1',
     '-i', inputPath,
     '-vf', gifFilter,
     '-loop', '0',
