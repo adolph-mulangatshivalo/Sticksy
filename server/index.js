@@ -480,7 +480,13 @@ app.post('/api/create-sticker', async (req, res) => {
     if (downloadedPath && fs.existsSync(downloadedPath)) {
       try { fs.unlinkSync(downloadedPath); } catch (e) {}
     }
-    res.status(500).json({ error: err.message || 'Failed to create sticker' });
+    let errorMsg = err.message || 'Failed to create sticker';
+    if (errorMsg.includes('redirect loop') || errorMsg.includes('login') || errorMsg.includes('sign in')) {
+      errorMsg = 'This link requires a login or has expired. Please verify that the post is public and try again.';
+    } else if (errorMsg.includes('ERROR:') || errorMsg.includes('yt-dlp')) {
+      errorMsg = 'Unable to extract media from this link. Please verify that the post is public and try again.';
+    }
+    res.status(500).json({ error: errorMsg });
   }
 });
 
