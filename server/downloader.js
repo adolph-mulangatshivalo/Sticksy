@@ -257,7 +257,7 @@ export async function extractYouTubeDirect(rawUrl) {
     const streamUrl = await new Promise((resolve) => {
       const proc = spawn(PYTHON_BIN, [
         '-m', 'yt_dlp',
-        '--extractor-args', 'youtube:player_client=ios,mweb,android',
+        '--js-runtimes', 'node',
         '--no-warnings',
         '--no-playlist',
         '-g',
@@ -928,7 +928,6 @@ export async function inspectMedia(rawUrl) {
       '--dump-single-json',
       '--no-warnings',
       '--no-playlist',
-      '--extractor-args', 'youtube:player_client=ios,mweb,android',
       url
     ]);
     let stdout = '';
@@ -1211,7 +1210,6 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       '--js-runtimes', 'node',
       '--no-playlist',
       '--no-warnings',
-      '--extractor-args', 'youtube:player_client=ios,mweb,android',
       '-f', 'bv*[height<=720]+ba/b[height<=720]/18/bv*+ba/b',
       '--merge-output-format', 'mp4',
       '-o', outTemplate,
@@ -1260,7 +1258,6 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       '--js-runtimes', 'node',
       '--no-playlist',
       '--no-warnings',
-      '--extractor-args', 'youtube:player_client=ios,mweb,android',
       '-f', 'bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
       '--merge-output-format', 'mp4',
       '-o', outTemplate,
