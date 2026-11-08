@@ -150,7 +150,12 @@ tabLink.addEventListener('click', () => {
   tabUpload.classList.remove('active');
   panelLink.classList.add('active');
   panelUpload.classList.remove('active');
-  selectedFile = null;
+  if (selectedFile) {
+    selectedFile = null;
+    currentMediaData = null;
+    previewCard.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+  }
 });
 
 tabUpload.addEventListener('click', () => {
@@ -158,6 +163,7 @@ tabUpload.addEventListener('click', () => {
   tabLink.classList.remove('active');
   panelUpload.classList.add('active');
   panelLink.classList.remove('active');
+  if (fileInput) fileInput.value = '';
 });
 
 // Paste from Clipboard
@@ -174,12 +180,15 @@ btnPaste.addEventListener('click', async () => {
   }
 });
 
-// Automatic Link Detector: Instantly detects copied link on app resume, tab focus, or touch
+// Automatic Link Detector: Instantly detects copied link on app resume or tab focus
 let lastAutoDetectedUrl = '';
 let isDetectingClipboard = false;
 
 async function checkAndAutoFetchClipboard() {
   if (isDetectingClipboard) return;
+  // NEVER auto-fetch or wipe state if an upload is selected or the user is on the Upload tab
+  if (selectedFile || (tabUpload && tabUpload.classList.contains('active'))) return;
+  if (currentMediaData?.isFileUpload) return;
   if (!navigator.clipboard || !navigator.clipboard.readText) return;
 
   isDetectingClipboard = true;
@@ -257,12 +266,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// 3. Check on touch / pointer if browser policy requires user gesture for clipboard access
-document.addEventListener('pointerdown', () => {
-  checkAndAutoFetchClipboard();
-}, { passive: true });
-
-// 4. Initial check when page finishes loading
+// 3. Initial check when page finishes loading
 setTimeout(checkAndAutoFetchClipboard, 400);
 
 // Enter key in input
@@ -850,7 +854,11 @@ async function inspectUrl(url) {
 }
 
 // File Drag & Drop / Selection
-dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', (e) => {
+  if (e.target !== fileInput) {
+    fileInput.click();
+  }
+});
 
 fileInput.addEventListener('change', (e) => {
   if (e.target.files && e.target.files[0]) {
@@ -876,17 +884,19 @@ dropZone.addEventListener('drop', (e) => {
 });
 
 function handleFileUpload(file) {
+  if (!file) return;
   selectedFile = file;
-  const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
-  const isVideo = file.type.startsWith('video/') && !isGif;
+  const ext = (file.name || '').split('.').pop().toLowerCase();
+  const isGif = file.type === 'image/gif' || ext === 'gif';
+  const isVideo = (!isGif) && (file.type.startsWith('video/') || ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', '3gp'].includes(ext));
   const previewUrl = URL.createObjectURL(file);
 
   currentMediaData = {
-    title: file.name,
+    title: file.name || 'Uploaded Media',
     thumbnail: previewUrl,
     videoUrl: isVideo ? previewUrl : null,
     type: isVideo ? 'video' : (isGif ? 'gif' : 'image'),
-    duration: isVideo ? 4 : (isGif ? 3 : null),
+    duration: isVideo ? 5 : (isGif ? 3 : null),
     platform: { id: 'upload', name: 'File' },
     previewBlobUrl: previewUrl,
     isFileUpload: true
@@ -1025,8 +1035,18 @@ function displayPreview(info) {
       imgSrc = `/api/proxy-image?url=${encodeURIComponent(info.thumbnail)}`;
     }
 
-    cropperImage.crossOrigin = 'anonymous';
+    if (info.isFileUpload || imgSrc.startsWith('blob:') || imgSrc.startsWith('data:')) {
+      cropperImage.removeAttribute('crossorigin');
+    } else {
+      cropperImage.crossOrigin = 'anonymous';
+    }
     cropperImage.src = imgSrc;
+
+    cropperImage.onerror = () => {
+      console.warn('Image load error on cropper');
+      if (previewSkeleton) previewSkeleton.classList.add('hidden');
+      imageCropContainer.classList.remove('hidden');
+    };
 
     cropperImage.onload = () => {
       if (previewSkeleton) previewSkeleton.classList.add('hidden');

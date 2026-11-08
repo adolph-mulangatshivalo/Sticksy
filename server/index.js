@@ -29,10 +29,26 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Configure Multer for direct file uploads
+// Configure Multer for direct file uploads preserving original file extension
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, tempDir),
+  filename: (req, file, cb) => {
+    let ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ext) {
+      const mime = (file.mimetype || '').toLowerCase();
+      if (mime.startsWith('video/')) ext = '.mp4';
+      else if (mime.includes('gif')) ext = '.gif';
+      else if (mime.includes('png')) ext = '.png';
+      else if (mime.includes('webp')) ext = '.webp';
+      else ext = '.jpg';
+    }
+    const unique = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    cb(null, `upload_${unique}${ext}`);
+  }
+});
 const upload = multer({
-  dest: tempDir,
-  limits: { fileSize: 40 * 1024 * 1024 } // 40 MB max upload
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50 MB max upload
 });
 
 // PWA Manifest and Service Worker headers
@@ -363,6 +379,7 @@ app.post('/api/upload-filmstrip', upload.single('media'), async (req, res) => {
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', [
         '-y',
+        '-ss', '0',
         '-i', req.file.path,
         '-vf', `fps=${fpsVal.toFixed(2)},scale=80:48,tile=8x1`,
         '-frames:v', '1',
@@ -374,7 +391,11 @@ app.post('/api/upload-filmstrip', upload.single('media'), async (req, res) => {
     });
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    fs.createReadStream(filmstripJpg).pipe(res);
+    const stream = fs.createReadStream(filmstripJpg);
+    stream.pipe(res);
+    res.on('finish', () => {
+      try { if (fs.existsSync(filmstripJpg)) fs.unlinkSync(filmstripJpg); } catch (_) {}
+    });
   } catch (e) {
     res.status(500).send('Filmstrip error');
   }
@@ -522,8 +543,11 @@ app.post('/api/upload-sticker', upload.single('media'), async (req, res) => {
       }
     }
 
+    const ext = path.extname(req.file.originalname || req.file.path).toLowerCase();
     const mime = (req.file.mimetype || '').toLowerCase();
-    const isVideo = mime.startsWith('video/') || mime.includes('gif');
+    const isVideo = mime.startsWith('video/') ||
+      ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.3gp'].includes(ext) ||
+      mime.includes('gif') || ext === '.gif';
 
     const metadata = {
       pack: packName || 'StickerSync',

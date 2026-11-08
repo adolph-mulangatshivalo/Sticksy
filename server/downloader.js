@@ -285,7 +285,7 @@ export async function extractYouTubeDirect(rawUrl) {
       }
     } catch (_) {}
 
-    const thumbnail = `https://i.ytimg.com/vi/${videoId}/hq720.jpg`;
+    const thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
     // 2. Fetch progressive stream URL using dynamic visitor token & embedded player clients
     const visitorData = await getYouTubeVisitorData();
@@ -308,7 +308,7 @@ export async function extractYouTubeDirect(rawUrl) {
           args.push('--cookies', cookieFile);
         } catch (_) {}
       }
-      args.push('-g', '-f', 'bv*+ba/b', canonicalUrl);
+      args.push('-g', '-f', 'b[ext=mp4]/best[ext=mp4]/bv*+ba/b', canonicalUrl);
 
       const proc = spawn(PYTHON_BIN, args);
       let out = '';
