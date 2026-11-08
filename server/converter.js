@@ -233,57 +233,43 @@ export async function convertAnimatedToGif({
   const mp4Path = outputPath.replace(/\.gif$/i, '.mp4');
   const webpPath = outputPath.replace(/\.gif$/i, '.webp');
 
-  // 2. Extract snapshot PNG directly from the generated GIF (takes ~15ms instead of re-decoding raw source!)
-  try {
-    await runFfmpeg([
-      '-y',
-      '-i', outputPath,
-      '-vframes', '1',
-      pngPath
-    ]);
-  } catch (e) {
-    console.warn('PNG snapshot extraction warning:', e.message);
-  }
-
-  // 3. Fast derivative conversions directly from the optimized GIF (each takes <100ms!)
-  try {
-    await runFfmpeg([
-      '-y',
-      '-i', outputPath,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
-      '-movflags', '+faststart',
-      '-an',
-      mp4Path
-    ]);
-  } catch (err) {
-    console.warn('Fast MP4 generation warning:', err.message);
-  }
-
-  try {
-    await runFfmpeg([
-      '-y',
-      '-i', outputPath,
-      '-c:v', 'libwebp',
-      '-lossless', '0',
-      '-compression_level', '1',
-      '-q:v', '40',
-      '-loop', '0',
-      '-an',
-      webpPath
-    ]);
-
-    // Inject WhatsApp EXIF into WebP
-    if (fs.existsSync(webpPath)) {
-      const rawWebp = fs.readFileSync(webpPath);
-      const stickerWebp = await injectWhatsAppExif(rawWebp, metadata);
-      fs.writeFileSync(webpPath, stickerWebp);
-    }
-  } catch (err) {
-    console.warn('Fast WebP generation warning:', err.message);
-  }
+  // Background non-blocking generation of derivatives (never delays HTTP response!)
+  setImmediate(async () => {
+    try {
+      await runFfmpeg(['-y', '-i', outputPath, '-vframes', '1', pngPath]);
+    } catch (_) {}
+    try {
+      await runFfmpeg([
+        '-y',
+        '-i', outputPath,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+        '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+        '-movflags', '+faststart',
+        '-an',
+        mp4Path
+      ]);
+    } catch (_) {}
+    try {
+      await runFfmpeg([
+        '-y',
+        '-i', outputPath,
+        '-c:v', 'libwebp',
+        '-lossless', '0',
+        '-compression_level', '1',
+        '-q:v', '40',
+        '-loop', '0',
+        '-an',
+        webpPath
+      ]);
+      if (fs.existsSync(webpPath)) {
+        const rawWebp = fs.readFileSync(webpPath);
+        const stickerWebp = await injectWhatsAppExif(rawWebp, metadata);
+        fs.writeFileSync(webpPath, stickerWebp);
+      }
+    } catch (_) {}
+  });
 
   return {
     path: outputPath,

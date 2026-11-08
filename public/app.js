@@ -261,7 +261,7 @@ if (btnVideoRatioSquare) {
     videoCropBox?.classList.add('ratio-square');
     
     const rect = getVideoRenderedRect();
-    const side = Math.max(50, Math.round(Math.min(rect.width, rect.height) * 0.80));
+    const side = Math.max(40, Math.round(Math.min(rect.width, rect.height) * 0.90));
     const left = Math.round((rect.width - side) / 2);
     const top = Math.round((rect.height - side) / 2);
     
@@ -432,13 +432,22 @@ function setupVideoCropInteractions() {
 }
 setupVideoCropInteractions();
 
-// Calculate exact rendered sub-rectangle of video inside <video> element (accounts for object-fit: contain letterbox/pillarbox)
+// Calculate exact rendered sub-rectangle of video inside videoPreviewFrame
 function getVideoRenderedRect() {
-  if (!previewVideo) {
-    return { left: 0, top: 0, width: 300, height: 300 };
+  if (!previewVideo || !videoPreviewFrame) {
+    return { left: 0, top: 0, width: 240, height: 200 };
   }
-  const elW = previewVideo.clientWidth || previewVideo.offsetWidth || 300;
-  const elH = previewVideo.clientHeight || previewVideo.offsetHeight || 300;
+  const frameRect = videoPreviewFrame.getBoundingClientRect();
+  const vidRect = previewVideo.getBoundingClientRect();
+
+  if (frameRect.width <= 0 || vidRect.width <= 0 || vidRect.height <= 0) {
+    const w = previewVideo.offsetWidth || 240;
+    const h = previewVideo.offsetHeight || 200;
+    return { left: 0, top: 0, width: w, height: h };
+  }
+
+  const elW = vidRect.width;
+  const elH = vidRect.height;
   const natW = previewVideo.videoWidth || elW;
   const natH = previewVideo.videoHeight || elH;
 
@@ -451,33 +460,34 @@ function getVideoRenderedRect() {
   let renderTop = 0;
 
   if (elementRatio > videoRatio) {
-    // Video is narrower than element container: letterboxed on left and right (pillarbox)
+    // Pillarbox: video is narrower than element container
     renderH = elH;
-    renderW = Math.round(elH * videoRatio);
-    renderLeft = Math.round((elW - renderW) / 2);
+    renderW = elH * videoRatio;
+    renderLeft = (elW - renderW) / 2;
     renderTop = 0;
   } else if (elementRatio < videoRatio) {
-    // Video is wider than element container: letterboxed on top and bottom
+    // Letterbox: video is wider than element container
     renderW = elW;
-    renderH = Math.round(elW / videoRatio);
+    renderH = elW / videoRatio;
     renderLeft = 0;
-    renderTop = Math.round((elH - renderH) / 2);
+    renderTop = (elH - renderH) / 2;
   }
 
-  return {
-    left: renderLeft + (previewVideo.offsetLeft || 0),
-    top: renderTop + (previewVideo.offsetTop || 0),
-    width: Math.max(renderW, 40),
-    height: Math.max(renderH, 40)
-  };
+  const left = Math.round((vidRect.left - frameRect.left) + renderLeft);
+  const top = Math.round((vidRect.top - frameRect.top) + renderTop);
+  const width = Math.max(30, Math.round(renderW));
+  const height = Math.max(30, Math.round(renderH));
+
+  return { left, top, width, height };
 }
 
 // Initialize video crop overlay and match dimensions exactly to rendered video
 function initVideoCropOverlay() {
-  if (!previewVideo || !videoCropOverlay || !videoCropBox) return;
+  if (!previewVideo || !videoCropOverlay || !videoCropBox || !videoPreviewFrame) return;
 
   const applySize = () => {
     const rect = getVideoRenderedRect();
+    if (rect.width <= 30 || rect.height <= 30) return;
 
     videoCropOverlay.style.width = `${rect.width}px`;
     videoCropOverlay.style.height = `${rect.height}px`;
@@ -493,7 +503,7 @@ function initVideoCropOverlay() {
 
     if (videoCropState.ratio === '1') {
       videoCropBox.classList.add('ratio-square');
-      const side = Math.max(50, Math.round(Math.min(rect.width, rect.height) * 0.80));
+      const side = Math.max(40, Math.round(Math.min(rect.width, rect.height) * 0.90));
       const left = Math.round((rect.width - side) / 2);
       const top = Math.round((rect.height - side) / 2);
       videoCropState.box = { left, top, width: side, height: side };
@@ -505,7 +515,6 @@ function initVideoCropOverlay() {
     renderVideoCropBox();
   };
 
-  applySize();
   requestAnimationFrame(applySize);
 }
 
@@ -1645,6 +1654,8 @@ function displayResult(sticker) {
       if (gifResp.ok) {
         currentStickerData.cachedGifBlob = await gifResp.blob();
         console.log('[Sticker] GIF blob cached (' + currentStickerData.cachedGifBlob.size + ' bytes)');
+        const localBlobUrl = URL.createObjectURL(currentStickerData.cachedGifBlob);
+        resultStickerImg.src = localBlobUrl;
       }
     } catch (e) {
       console.warn('Background GIF blob caching warning:', e);
@@ -1691,42 +1702,70 @@ async function copyGifToClipboard() {
     }
   }
 
+  let copied = false;
   // Modern Async Clipboard API (Direct single image/gif write — zero duplicate HTML snippet!)
   if (navigator.clipboard && window.ClipboardItem && gifBlob) {
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'image/gif': gifBlob })]);
+      copied = true;
       console.log('[Clipboard] Copied pure animated GIF via Async Clipboard API');
     } catch (errA) {
-      console.warn('[Clipboard] Async write notice:', errA.message);
+      console.warn('[Clipboard] Async write image/gif notice:', errA.message);
+      try {
+        if (gifBlob.type === 'image/png') {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': gifBlob })]);
+          copied = true;
+        }
+      } catch (_) {}
     }
   }
 
-  return true;
+  if (copied) {
+    if (stickerCanvasContainer) {
+      stickerCanvasContainer.classList.add('copied-burst');
+      setTimeout(() => stickerCanvasContainer.classList.remove('copied-burst'), 1200);
+    }
+    if (holdCallout) {
+      holdCallout.classList.add('success-copied');
+    }
+    if (calloutText) {
+      calloutText.textContent = 'GIF copied! Tap below to open WhatsApp';
+    }
+    showAlert('GIF copied to clipboard! Tap Open WhatsApp below to paste.');
+    setTimeout(() => {
+      if (holdCallout) holdCallout.classList.remove('success-copied');
+      if (calloutText) {
+        calloutText.textContent = 'Hold the GIF and tap Copy image';
+      }
+    }, 5000);
+    return true;
+  }
+
+  return false;
 }
 
-// Helper: Launch native WhatsApp application (Android direct app intent, iOS & Desktop whatsapp://)
+// Helper: Launch native WhatsApp application (Android direct app launcher intent, iOS & Desktop whatsapp://)
 function openWhatsAppApp() {
   const ua = navigator.userAgent || '';
   const isAndroid = /Android/i.test(ua);
 
   if (isAndroid) {
-    // Android native package intent directly opens the installed WhatsApp application!
-    // Bypasses browser tabs and web redirects entirely
-    window.location.href = 'intent://send#Intent;package=com.whatsapp;scheme=whatsapp;end;';
+    // Android native launcher intent: opens WhatsApp cleanly to chats list without "send" intent errors!
+    window.location.href = 'intent:#Intent;package=com.whatsapp;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end;';
     return;
   }
 
   // iOS (iPhone/iPad), Windows Desktop App, and macOS Desktop App
-  // whatsapp://send triggers the registered native WhatsApp client directly
+  // whatsapp:// triggers the registered native WhatsApp client directly
   try {
     const a = document.createElement('a');
-    a.href = 'whatsapp://send';
+    a.href = 'whatsapp://';
     a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   } catch (_) {
-    window.location.href = 'whatsapp://send';
+    window.location.href = 'whatsapp://';
   }
 }
 
@@ -1772,6 +1811,16 @@ if (stickerCanvasContainer) {
 
   stickerCanvasContainer.addEventListener('mouseup', triggerHoldVisualsEnd);
   stickerCanvasContainer.addEventListener('mouseleave', triggerHoldVisualsEnd);
+}
+
+// Tap on Callout to Copy Directly
+if (holdCallout) {
+  holdCallout.addEventListener('click', async () => {
+    const ok = await copyGifToClipboard();
+    if (!ok) {
+      showAlert('Press and hold the GIF above, then tap Copy image.');
+    }
+  });
 }
 
 
