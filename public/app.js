@@ -107,7 +107,8 @@ let videoCropState = {
   activeHandle: null,
   startX: 0,
   startY: 0,
-  startBox: null
+  startBox: null,
+  isCustomCropped: false
 };
 
 // General Form Controls
@@ -168,106 +169,25 @@ tabUpload.addEventListener('click', () => {
 
 // Paste from Clipboard
 btnPaste.addEventListener('click', async () => {
+  clearAlert();
   try {
-    const text = await navigator.clipboard.readText();
+    let text = '';
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      text = await navigator.clipboard.readText();
+    }
+    text = (text || '').trim();
     if (text) {
-      lastAutoDetectedUrl = text.trim();
-      mediaUrl.value = text.trim();
-      inspectUrl(text.trim());
+      mediaUrl.value = text;
+      inspectUrl(text);
+    } else {
+      mediaUrl.focus();
+      showAlert('Clipboard is empty. Copy a link first!');
     }
   } catch (err) {
-    showAlert('Please paste the link directly into the box.');
+    mediaUrl.focus();
+    showAlert('Tap inside the box and tap Paste.');
   }
 });
-
-// Automatic Link Detector: Instantly detects copied link on app resume or tab focus
-let lastAutoDetectedUrl = '';
-let isDetectingClipboard = false;
-
-async function checkAndAutoFetchClipboard() {
-  if (isDetectingClipboard) return;
-  // NEVER auto-fetch or wipe state if an upload is selected or the user is on the Upload tab
-  if (selectedFile || (tabUpload && tabUpload.classList.contains('active'))) return;
-  if (currentMediaData?.isFileUpload) return;
-  if (!navigator.clipboard || !navigator.clipboard.readText) return;
-
-  isDetectingClipboard = true;
-  try {
-    const rawText = await navigator.clipboard.readText();
-    const text = (rawText || '').trim();
-    if (!text) return;
-
-    // Check if clipboard contains a valid HTTP/HTTPS URL
-    const urlMatch = text.match(/https?:\/\/[^\s]+/i);
-    if (!urlMatch) return;
-    const url = urlMatch[0];
-
-    // Filter out internal app URLs and WhatsApp web/app links
-    if (/localhost|127\.0\.0\.1|trycloudflare\.com|whatsapp\.com|wa\.me/i.test(url)) return;
-
-    // Only proceed if it is a NEW link that hasn't just been processed
-    if (url === lastAutoDetectedUrl) return;
-
-    console.log('[Auto-Detector] Detected new link on clipboard:', url);
-    lastAutoDetectedUrl = url;
-
-    // Update the input field
-    if (mediaUrl) mediaUrl.value = url;
-
-    // If currently showing a sticker result or preview, reset to clean state first
-    if (!previewCard.classList.contains('hidden')) {
-      if (resultStickerImg) {
-        resultStickerImg.removeAttribute('src');
-        resultStickerImg.src = '';
-      }
-      currentStickerData = null;
-      currentMediaData = null;
-      previewCard.classList.add('hidden');
-      if (studioResultView) studioResultView.classList.add('hidden');
-      if (studioEditorView) studioEditorView.classList.remove('hidden');
-      if (studioHeaderResult) studioHeaderResult.classList.add('hidden');
-      if (studioHeaderTrimming) studioHeaderTrimming.classList.remove('hidden');
-      if (timelineFilmstrip) timelineFilmstrip.innerHTML = '';
-      if (filmstripAbortController) filmstripAbortController.abort = true;
-      if (cropperInstance) {
-        cropperInstance.destroy();
-        cropperInstance = null;
-      }
-    }
-
-    // Switch to Link tab
-    if (tabLink && !tabLink.classList.contains('active')) {
-      tabLink.click();
-    }
-
-    // Inform user with alert
-    showAlert('Auto-detected link from clipboard! Fetching sticker...');
-
-    // Automatically inspect and fetch with skeleton loader
-    inspectUrl(url);
-  } catch (err) {
-    // Clipboard permission not granted or deferred until user interaction — silent fail
-  } finally {
-    setTimeout(() => {
-      isDetectingClipboard = false;
-    }, 600);
-  }
-}
-
-// 1. Check when window or PWA regains focus (switching back from Pinterest, TikTok, etc.)
-window.addEventListener('focus', () => {
-  checkAndAutoFetchClipboard();
-});
-
-// 2. Check when app or tab becomes visible
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    checkAndAutoFetchClipboard();
-  }
-});
-
-// 3. Initial check when page finishes loading
-setTimeout(checkAndAutoFetchClipboard, 400);
 
 // Enter key in input
 mediaUrl.addEventListener('keypress', (e) => {
@@ -317,14 +237,13 @@ document.addEventListener('pointerdown', () => {
 if (btnVideoRatioFree) {
   btnVideoRatioFree.addEventListener('click', () => {
     videoCropState.ratio = 'free';
+    videoCropState.isCustomCropped = false;
     btnVideoRatioFree.classList.add('active');
     btnVideoRatioSquare?.classList.remove('active');
     videoCropBox?.classList.remove('ratio-square');
 
-    // Freeform crop: cover the WHOLE media exactly as requested!
-    const overlayW = videoCropOverlay?.offsetWidth || previewVideo?.offsetWidth || 300;
-    const overlayH = videoCropOverlay?.offsetHeight || previewVideo?.offsetHeight || 300;
-    videoCropState.box = { left: 0, top: 0, width: overlayW, height: overlayH };
+    const rect = getVideoRenderedRect();
+    videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
     renderVideoCropBox();
 
     if (videoCropHintText) {
@@ -336,16 +255,15 @@ if (btnVideoRatioFree) {
 if (btnVideoRatioSquare) {
   btnVideoRatioSquare.addEventListener('click', () => {
     videoCropState.ratio = '1';
+    videoCropState.isCustomCropped = true;
     btnVideoRatioSquare.classList.add('active');
     btnVideoRatioFree?.classList.remove('active');
     videoCropBox?.classList.add('ratio-square');
     
-    // Force 1:1 small square centered on media
-    const overlayW = videoCropOverlay?.offsetWidth || previewVideo?.offsetWidth || 300;
-    const overlayH = videoCropOverlay?.offsetHeight || previewVideo?.offsetHeight || 300;
-    const side = Math.max(50, Math.round(Math.min(overlayW, overlayH) * 0.60));
-    const left = Math.round((overlayW - side) / 2);
-    const top = Math.round((overlayH - side) / 2);
+    const rect = getVideoRenderedRect();
+    const side = Math.max(50, Math.round(Math.min(rect.width, rect.height) * 0.80));
+    const left = Math.round((rect.width - side) / 2);
+    const top = Math.round((rect.height - side) / 2);
     
     videoCropState.box = { left, top, width: side, height: side };
     renderVideoCropBox();
@@ -358,13 +276,13 @@ if (btnVideoRatioSquare) {
 
 if (btnVideoResetCrop) {
   btnVideoResetCrop.addEventListener('click', () => {
-    const overlayW = videoCropOverlay?.offsetWidth || previewVideo?.offsetWidth || 300;
-    const overlayH = videoCropOverlay?.offsetHeight || previewVideo?.offsetHeight || 300;
     videoCropState.ratio = 'free';
+    videoCropState.isCustomCropped = false;
     btnVideoRatioFree?.classList.add('active');
     btnVideoRatioSquare?.classList.remove('active');
     videoCropBox?.classList.remove('ratio-square');
-    videoCropState.box = { left: 0, top: 0, width: overlayW, height: overlayH };
+    const rect = getVideoRenderedRect();
+    videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
     renderVideoCropBox();
     if (videoCropHintText) {
       videoCropHintText.textContent = 'Crop reset to cover whole media';
@@ -396,8 +314,8 @@ function setupVideoCropInteractions() {
     const dx = e.clientX - videoCropState.startX;
     const dy = e.clientY - videoCropState.startY;
     const sb = videoCropState.startBox;
-    const overlayW = videoCropOverlay?.offsetWidth || previewVideo?.offsetWidth || 300;
-    const overlayH = videoCropOverlay?.offsetHeight || previewVideo?.offsetHeight || 300;
+    const overlayW = videoCropOverlay?.offsetWidth || 300;
+    const overlayH = videoCropOverlay?.offsetHeight || 300;
 
     let { left, top, width, height } = sb;
     const isSquare = videoCropState.ratio === '1';
@@ -499,6 +417,9 @@ function setupVideoCropInteractions() {
   };
 
   const onPointerUp = (e) => {
+    if (videoCropState.activeHandle) {
+      videoCropState.isCustomCropped = true;
+    }
     videoCropState.activeHandle = null;
     videoCropState.startBox = null;
     try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
@@ -511,52 +432,81 @@ function setupVideoCropInteractions() {
 }
 setupVideoCropInteractions();
 
+// Calculate exact rendered sub-rectangle of video inside <video> element (accounts for object-fit: contain letterbox/pillarbox)
+function getVideoRenderedRect() {
+  if (!previewVideo) {
+    return { left: 0, top: 0, width: 300, height: 300 };
+  }
+  const elW = previewVideo.clientWidth || previewVideo.offsetWidth || 300;
+  const elH = previewVideo.clientHeight || previewVideo.offsetHeight || 300;
+  const natW = previewVideo.videoWidth || elW;
+  const natH = previewVideo.videoHeight || elH;
+
+  const videoRatio = natW / natH;
+  const elementRatio = elW / elH;
+
+  let renderW = elW;
+  let renderH = elH;
+  let renderLeft = 0;
+  let renderTop = 0;
+
+  if (elementRatio > videoRatio) {
+    // Video is narrower than element container: letterboxed on left and right (pillarbox)
+    renderH = elH;
+    renderW = Math.round(elH * videoRatio);
+    renderLeft = Math.round((elW - renderW) / 2);
+    renderTop = 0;
+  } else if (elementRatio < videoRatio) {
+    // Video is wider than element container: letterboxed on top and bottom
+    renderW = elW;
+    renderH = Math.round(elW / videoRatio);
+    renderLeft = 0;
+    renderTop = Math.round((elH - renderH) / 2);
+  }
+
+  return {
+    left: renderLeft + (previewVideo.offsetLeft || 0),
+    top: renderTop + (previewVideo.offsetTop || 0),
+    width: Math.max(renderW, 40),
+    height: Math.max(renderH, 40)
+  };
+}
+
 // Initialize video crop overlay and match dimensions exactly to rendered video
 function initVideoCropOverlay() {
   if (!previewVideo || !videoCropOverlay || !videoCropBox) return;
 
   const applySize = () => {
-    const frame = document.getElementById('videoPreviewFrame');
-    const frameW = frame ? (frame.clientWidth || frame.offsetWidth) : 340;
-    const frameH = frame ? (frame.clientHeight || frame.offsetHeight) : 340;
+    const rect = getVideoRenderedRect();
 
-    let w = previewVideo.clientWidth || previewVideo.offsetWidth;
-    let h = previewVideo.clientHeight || previewVideo.offsetHeight;
-    let leftOffset = previewVideo.offsetLeft || 0;
-    let topOffset = previewVideo.offsetTop || 0;
+    videoCropOverlay.style.width = `${rect.width}px`;
+    videoCropOverlay.style.height = `${rect.height}px`;
+    videoCropOverlay.style.left = `${rect.left}px`;
+    videoCropOverlay.style.top = `${rect.top}px`;
 
-    // Fallback immediately to preview frame dimensions so handles appear with ZERO delay
-    if (!w || !h || w <= 0 || h <= 0) {
-      w = Math.max(frameW, 260);
-      h = Math.max(frameH, 220);
-      leftOffset = 0;
-      topOffset = 0;
+    // CRITICAL: If the user has already set a custom crop, PRESERVE it!
+    // Never reset when the video loops or on time updates!
+    if (videoCropState.isCustomCropped && videoCropState.box && videoCropState.box.width > 0) {
+      renderVideoCropBox();
+      return;
     }
-
-    videoCropOverlay.style.width = `${w}px`;
-    videoCropOverlay.style.height = `${h}px`;
-    videoCropOverlay.style.left = `${leftOffset}px`;
-    videoCropOverlay.style.top = `${topOffset}px`;
 
     if (videoCropState.ratio === '1') {
       videoCropBox.classList.add('ratio-square');
-      const side = Math.max(50, Math.round(Math.min(w, h) * 0.60));
-      const left = Math.round((w - side) / 2);
-      const top = Math.round((h - side) / 2);
+      const side = Math.max(50, Math.round(Math.min(rect.width, rect.height) * 0.80));
+      const left = Math.round((rect.width - side) / 2);
+      const top = Math.round((rect.height - side) / 2);
       videoCropState.box = { left, top, width: side, height: side };
     } else {
       videoCropBox.classList.remove('ratio-square');
-      // Freeform: default to covering 100% of the active media area
-      videoCropState.box = { left: 0, top: 0, width: w, height: h };
+      // Freeform: default to covering 100% of the active rendered video
+      videoCropState.box = { left: 0, top: 0, width: rect.width, height: rect.height };
     }
     renderVideoCropBox();
   };
 
   applySize();
   requestAnimationFrame(applySize);
-  setTimeout(applySize, 40);
-  setTimeout(applySize, 150);
-  setTimeout(applySize, 350);
 }
 
 window.addEventListener('resize', () => {
@@ -567,8 +517,8 @@ window.addEventListener('resize', () => {
 
 function renderVideoCropBox() {
   if (!videoCropOverlay || !videoCropBox) return;
-  const overlayW = videoCropOverlay.offsetWidth || previewVideo.offsetWidth || 300;
-  const overlayH = videoCropOverlay.offsetHeight || previewVideo.offsetHeight || 300;
+  const overlayW = videoCropOverlay.offsetWidth || 300;
+  const overlayH = videoCropOverlay.offsetHeight || 300;
   
   let { left, top, width, height } = videoCropState.box;
   
@@ -613,28 +563,35 @@ function renderVideoCropBox() {
 // Convert video crop box coordinates to native video pixel coordinates for FFmpeg
 function getVideoCropData() {
   if (!previewVideo || !videoCropState.box.width) return null;
-  const overlayW = videoCropOverlay?.offsetWidth || previewVideo.offsetWidth;
-  const overlayH = videoCropOverlay?.offsetHeight || previewVideo.offsetHeight;
-  if (!overlayW || !overlayH) return null;
-  
-  const natW = previewVideo.videoWidth || overlayW;
-  const natH = previewVideo.videoHeight || overlayH;
-  
+  const rect = getVideoRenderedRect();
+  if (!rect.width || !rect.height) return null;
+
+  const natW = previewVideo.videoWidth || rect.width;
+  const natH = previewVideo.videoHeight || rect.height;
+
   const { left, top, width, height } = videoCropState.box;
-  
-  // If box covers ~100% of video in freeform mode, return null (keep whole video)
-  if (videoCropState.ratio === 'free' && left <= 3 && top <= 3 && width >= overlayW - 6 && height >= overlayH - 6) {
+
+  // If freeform and covering ~100% without custom adjustments, return null to keep entire video without crop/zoom!
+  if (!videoCropState.isCustomCropped && videoCropState.ratio === 'free') {
     return null;
   }
-  
-  const scaleX = natW / overlayW;
-  const scaleY = natH / overlayH;
-  
+  if (videoCropState.ratio === 'free' && left <= 4 && top <= 4 && width >= rect.width - 8 && height >= rect.height - 8) {
+    return null;
+  }
+
+  const scaleX = natW / rect.width;
+  const scaleY = natH / rect.height;
+
+  const cropX = Math.max(0, Math.min(natW - 10, Math.round(left * scaleX)));
+  const cropY = Math.max(0, Math.min(natH - 10, Math.round(top * scaleY)));
+  const cropW = Math.max(10, Math.min(natW - cropX, Math.round(width * scaleX)));
+  const cropH = Math.max(10, Math.min(natH - cropY, Math.round(height * scaleY)));
+
   return {
-    x: Math.max(0, Math.round(left * scaleX)),
-    y: Math.max(0, Math.round(top * scaleY)),
-    width: Math.min(natW, Math.round(width * scaleX)),
-    height: Math.min(natH, Math.round(height * scaleY))
+    x: cropX,
+    y: cropY,
+    width: cropW,
+    height: cropH
   };
 }
 
@@ -937,7 +894,10 @@ function displayPreview(info) {
       videoSrc = `/api/proxy-video?url=${encodeURIComponent(rawVideoSrc)}`;
     }
 
+    let videoUiRevealed = false;
     const revealVideoUi = () => {
+      if (videoUiRevealed) return;
+      videoUiRevealed = true;
       hideVideoLoader();
       if (previewSkeleton) previewSkeleton.classList.add('hidden');
       videoTrimContainer.classList.remove('hidden');
@@ -950,6 +910,7 @@ function displayPreview(info) {
 
     if (videoSrc) {
       showVideoLoader();
+      videoCropState.isCustomCropped = false;
       previewVideo.removeAttribute('crossorigin');
       previewVideo.muted = true;
       previewVideo.defaultMuted = true;
@@ -987,18 +948,16 @@ function displayPreview(info) {
         attemptPlay();
       };
       previewVideo.ondurationchange = () => {
-        if (!isNaN(previewVideo.duration) && previewVideo.duration > 0) {
-          initVideoTrimmer(previewVideo.duration);
-          initVideoCropOverlay();
-          if (videoSrc) generateVideoFilmstrip(videoSrc, previewVideo.duration);
+        if (!videoUiRevealed && !isNaN(previewVideo.duration) && previewVideo.duration > 0) {
+          revealVideoUi();
         }
       };
       previewVideo.oncanplay = () => {
-        revealVideoUi();
+        hideVideoLoader();
         attemptPlay();
       };
       previewVideo.onloadeddata = () => {
-        revealVideoUi();
+        hideVideoLoader();
         attemptPlay();
       };
       previewVideo.onplaying = () => {
@@ -1686,9 +1645,6 @@ function displayResult(sticker) {
       if (gifResp.ok) {
         currentStickerData.cachedGifBlob = await gifResp.blob();
         console.log('[Sticker] GIF blob cached (' + currentStickerData.cachedGifBlob.size + ' bytes)');
-        // Once blob is cached, update src to local blob URL so copy-on-hold has full bytes
-        const localBlobUrl = URL.createObjectURL(currentStickerData.cachedGifBlob);
-        resultStickerImg.src = `${localBlobUrl}#stickers.gif`;
       }
     } catch (e) {
       console.warn('Background GIF blob caching warning:', e);
@@ -2032,9 +1988,42 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Handle PWA Installation Prompt
+// Handle PWA Installation Prompt (Native Android prompt & iOS step-by-step instructions)
 let deferredPrompt = null;
 const btnPwaInstall = document.getElementById('btnPwaInstall');
+const iosInstallModal = document.getElementById('iosInstallModal');
+const btnIosModalClose = document.getElementById('btnIosModalClose');
+const btnIosModalGotIt = document.getElementById('btnIosModalGotIt');
+
+const isIosDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isStandaloneMode = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+
+// On iOS devices, show "Install App" button in navbar if not already installed as standalone
+if (isIosDevice && !isStandaloneMode && btnPwaInstall) {
+  btnPwaInstall.classList.remove('hidden');
+}
+
+function showIosInstallModal() {
+  if (iosInstallModal) {
+    iosInstallModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function hideIosInstallModal() {
+  if (iosInstallModal) {
+    iosInstallModal.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+}
+
+if (btnIosModalClose) btnIosModalClose.addEventListener('click', hideIosInstallModal);
+if (btnIosModalGotIt) btnIosModalGotIt.addEventListener('click', hideIosInstallModal);
+if (iosInstallModal) {
+  iosInstallModal.addEventListener('click', (e) => {
+    if (e.target === iosInstallModal) hideIosInstallModal();
+  });
+}
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -2046,12 +2035,16 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 if (btnPwaInstall) {
   btnPwaInstall.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`PWA install choice: ${outcome}`);
-    deferredPrompt = null;
-    btnPwaInstall.classList.add('hidden');
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`PWA install choice: ${outcome}`);
+      deferredPrompt = null;
+      btnPwaInstall.classList.add('hidden');
+      return;
+    }
+    // If on iPhone or fallback, show the beautiful step-by-step instructions
+    showIosInstallModal();
   });
 }
 

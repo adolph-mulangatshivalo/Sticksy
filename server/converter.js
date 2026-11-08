@@ -218,8 +218,8 @@ export async function convertAnimatedToGif({
   const args = [
     '-y',
     '-ss', safeStart.toString(),
-    '-t', safeDuration.toString(),
     '-i', inputPath,
+    '-t', safeDuration.toString(),
     '-vf', filter,
     '-loop', '0',
     outputPath

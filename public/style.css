@@ -2396,3 +2396,179 @@ body {
       rgba(255, 255, 255, 0) 100%);
   animation: skeleton-shimmer 1.5s infinite;
 }
+
+/* iOS PWA Install Modal Overlay */
+.ios-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.ios-modal-overlay.hidden {
+  display: none !important;
+}
+
+.ios-modal-card {
+  background-color: #FFFDF9;
+  border: 3.5px solid #000000;
+  border-radius: 20px;
+  box-shadow: 6px 6px 0px #000000;
+  width: 100%;
+  max-width: 400px;
+  padding: 22px 20px 20px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: slideUpModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpModal {
+  from {
+    transform: translateY(20px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.ios-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  background: transparent;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 900;
+  color: #000;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.ios-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ios-modal-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background-color: var(--vibrant-yellow);
+  border: 2.5px solid #000;
+  box-shadow: 2px 2px 0px #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ios-modal-title {
+  font-size: 17px;
+  font-weight: 900;
+  color: #000;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.ios-modal-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin: 3px 0 0;
+}
+
+.ios-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-color: #FFFFFF;
+  border: 2.5px solid #000;
+  border-radius: 14px;
+  box-shadow: 2px 2px 0px #000;
+  padding: 14px;
+}
+
+.ios-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ios-step-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--vibrant-yellow);
+  border: 2px solid #000;
+  font-size: 12px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.ios-step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.ios-step-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: #000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ios-icon-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vibrant-yellow);
+  border: 1.5px solid #000;
+  border-radius: 6px;
+  padding: 2px 4px;
+  box-shadow: 1px 1px 0px #000;
+  vertical-align: middle;
+}
+
+.ios-icon-inline svg {
+  display: block;
+}
+
+.ios-step-desc {
+  font-size: 11px;
+  color: #666;
+  line-height: 1.35;
+}
+
+.ios-modal-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+  cursor: pointer;
+}

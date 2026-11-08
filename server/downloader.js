@@ -292,6 +292,7 @@ export async function extractYouTubeDirect(rawUrl) {
     const streamUrl = await new Promise((resolve) => {
       const args = [
         '-m', 'yt_dlp',
+        '--remote-components', 'ejs:github',
         '--js-runtimes', 'node',
         '--no-warnings',
         '--no-playlist'
@@ -972,6 +973,7 @@ export async function inspectMedia(rawUrl) {
     const visitorData = platform.id === 'youtube' ? await getYouTubeVisitorData() : null;
     const args = [
       '-m', 'yt_dlp',
+      '--remote-components', 'ejs:github',
       '--js-runtimes', 'node',
       '--dump-single-json',
       '--no-warnings',
@@ -1057,6 +1059,11 @@ export async function inspectMedia(rawUrl) {
 
       // 9. If yt-dlp failed, check Pinterest direct fallback
       if (platform.id === 'pinterest') {
+        const directPin = await extractPinterestDirect(url);
+        if (directPin) {
+          resolve(directPin);
+          return;
+        }
         const pinData = await extractPinterestWithPython(url);
         if (pinData) {
           resolve({
@@ -1077,6 +1084,22 @@ export async function inspectMedia(rawUrl) {
         const fbData = await extractFacebookDirect(url);
         if (fbData) {
           resolve(fbData);
+          return;
+        }
+      }
+
+      // 9c. If yt-dlp failed on YouTube, fallback to high-resolution thumbnail
+      if (platform.id === 'youtube') {
+        const match = url.match(/(?:v=|shorts\/|youtu\.be\/|embed\/|v\/|watch\?v=|\/e\/)([a-zA-Z0-9_-]{11})/i);
+        const videoId = match ? match[1] : null;
+        if (videoId) {
+          resolve({
+            title: 'YouTube Video',
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            videoUrl: null,
+            type: 'image',
+            platform
+          });
           return;
         }
       }
@@ -1268,6 +1291,7 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       const visitorData = await getYouTubeVisitorData();
       const args = [
         '-m', 'yt_dlp',
+        '--remote-components', 'ejs:github',
         '--js-runtimes', 'node',
         '--no-playlist',
         '--no-warnings'
@@ -1347,6 +1371,7 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     const outTemplate = path.join(tempDir, `${filePrefix}_input.%(ext)s`);
     const args = [
       '-m', 'yt_dlp',
+      '--remote-components', 'ejs:github',
       '--js-runtimes', 'node',
       '--no-playlist',
       '--no-warnings',
@@ -1373,7 +1398,16 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
       return path.join(tempDir, match);
     }
   } catch (err) {
-    // 9. If yt-dlp download failed, try OpenGraph media download fallback (for non-YouTube)
+    // 9. If yt-dlp download failed, check Pinterest direct photo fallback
+    if (platform.id === 'pinterest') {
+      const directPin = await extractPinterestDirect(url);
+      if (directPin && directPin.thumbnail) {
+        const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
+        await downloadDirectMedia(directPin.thumbnail, outPath);
+        return outPath;
+      }
+    }
+    // 9b. If yt-dlp download failed, try OpenGraph media download fallback (for non-YouTube)
     if (platform.id !== 'youtube') {
       const ogData = await extractOpenGraphDirect(url);
       if (ogData) {
