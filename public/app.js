@@ -875,7 +875,7 @@ function displayPreview(info) {
       hideVideoLoader();
       if (previewSkeleton) previewSkeleton.classList.add('hidden');
       videoTrimContainer.classList.remove('hidden');
-      const dur = previewVideo.duration || info.duration || 10.0;
+      const dur = previewVideo.duration || info.duration || 5.0;
       initVideoTrimmer(dur);
       initVideoCropOverlay();
       if (videoSrc) generateVideoFilmstrip(videoSrc, dur);
@@ -1043,10 +1043,15 @@ function displayPreview(info) {
 function autoScrollToCropper() {
   setTimeout(() => {
     const target = document.getElementById('previewCard');
+    const btn = document.getElementById('btnConvert');
     if (target && !target.classList.contains('hidden')) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (btn) {
+        btn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
-  }, 100);
+  }, 120);
 }
 
 // Filmstrip Generator State
@@ -1101,7 +1106,7 @@ async function generateVideoFilmstrip(videoSrc, duration) {
 
   // 1. If it's a web/platform URL, use server FFmpeg generator (takes 30ms, 100% reliable)
   const rawUrl = currentMediaData?.sourceUrl || currentMediaData?.videoUrl;
-  const safeDur = Math.max(0.5, parseFloat(duration) || 10.0);
+  const safeDur = Math.max(0.5, parseFloat(duration) || 5.0);
   if (rawUrl && rawUrl.startsWith('http') && !currentMediaData.isFileUpload) {
     applyFilmstripImage(`/api/video-filmstrip?url=${encodeURIComponent(rawUrl)}&duration=${encodeURIComponent(safeDur)}`);
     return;
@@ -1152,7 +1157,7 @@ async function runClientCanvasFilmstrip(videoSrc, duration, currentGen, frameEle
   if (currentGen.abort) return;
   const totalDur = (offVideo.duration && !isNaN(offVideo.duration) && offVideo.duration > 0)
     ? offVideo.duration
-    : (duration || 10.0);
+    : (duration || 5.0);
 
   const FRAME_COUNT = frameElements.length || 8;
   for (let i = 0; i < FRAME_COUNT; i++) {
@@ -1186,12 +1191,12 @@ async function runClientCanvasFilmstrip(videoSrc, duration, currentGen, frameEle
 }
 
 // Track duration and position
-let videoTotalDuration = 10.0;
+let videoTotalDuration = 5.0;
 
 function updateTimelineVisuals() {
-  const total = videoTotalDuration || (previewVideo && !isNaN(previewVideo.duration) && previewVideo.duration > 0 ? previewVideo.duration : 10.0) || 10.0;
+  const total = videoTotalDuration || (previewVideo && !isNaN(previewVideo.duration) && previewVideo.duration > 0 ? previewVideo.duration : 5.0) || 5.0;
   const s = parseFloat(sliderStart.value) || 0;
-  const e = parseFloat(sliderEnd.value) || Math.min(total, 10.0);
+  const e = parseFloat(sliderEnd.value) || Math.min(total, 5.0);
   const cur = previewVideo && !isNaN(previewVideo.currentTime) ? previewVideo.currentTime : s;
 
   const startPct = Math.max(0, Math.min(100, (s / total) * 100));
@@ -1221,7 +1226,7 @@ function setupTimelineInteractions() {
     const rect = timelineTrack.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const pct = Math.max(0, Math.min(1, clickX / rect.width));
-    const total = videoTotalDuration || (previewVideo && !isNaN(previewVideo.duration) ? previewVideo.duration : 10.0) || 10.0;
+    const total = videoTotalDuration || (previewVideo && !isNaN(previewVideo.duration) ? previewVideo.duration : 5.0) || 5.0;
     const targetTime = pct * total;
     if (previewVideo && !isNaN(previewVideo.duration)) {
       previewVideo.currentTime = targetTime;
@@ -1251,15 +1256,15 @@ function setupTimelineInteractions() {
     const rect = timelineTrack.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const pct = Math.max(0, Math.min(1, clickX / rect.width));
-    const total = videoTotalDuration || 10.0;
+    const total = videoTotalDuration || 5.0;
     const newTime = Math.round(pct * total * 10) / 10;
 
     if (activeDragHandle === 'start') {
       const curEnd = parseFloat(sliderEnd.value);
       const clampedStart = Math.max(0, Math.min(newTime, Math.max(0, curEnd - 0.5)));
       sliderStart.value = clampedStart;
-      if (curEnd - clampedStart > 10.0) {
-        sliderEnd.value = Math.min(total, clampedStart + 10.0);
+      if (curEnd - clampedStart > 5.0) {
+        sliderEnd.value = Math.min(total, clampedStart + 5.0);
       }
       if (previewVideo && !isNaN(previewVideo.duration)) {
         previewVideo.currentTime = clampedStart;
@@ -1268,8 +1273,8 @@ function setupTimelineInteractions() {
       const curStart = parseFloat(sliderStart.value);
       const clampedEnd = Math.max(Math.min(total, curStart + 0.5), Math.min(total, newTime));
       sliderEnd.value = clampedEnd;
-      if (clampedEnd - curStart > 10.0) {
-        sliderStart.value = Math.max(0, clampedEnd - 10.0);
+      if (clampedEnd - curStart > 5.0) {
+        sliderStart.value = Math.max(0, clampedEnd - 5.0);
       }
       if (previewVideo && !isNaN(previewVideo.duration)) {
         previewVideo.currentTime = clampedEnd;
@@ -1291,9 +1296,9 @@ function setupTimelineInteractions() {
 }
 setupTimelineInteractions();
 
-// Initialize Video Trimmer with Dual Sliders (Strictly up to 10.0s WhatsApp animated standard)
+// Initialize Video Trimmer with Dual Sliders (Strictly up to 5.0s sticker standard)
 function initVideoTrimmer(totalDuration) {
-  const total = Math.max(parseFloat(totalDuration) || 10.0, 1.0);
+  const total = Math.max(parseFloat(totalDuration) || 5.0, 1.0);
   videoTotalDuration = total;
 
   sliderStart.max = Math.max(total - 0.5, 0.1);
@@ -1302,9 +1307,9 @@ function initVideoTrimmer(totalDuration) {
   }
 
   sliderEnd.max = total;
-  // User requested MAXIMUM number of seconds allowed (up to 10.0s WhatsApp limit)
+  // Maximum number of seconds allowed is 5.0s
   sliderStart.value = 0;
-  sliderEnd.value = Math.min(total, 10.0);
+  sliderEnd.value = Math.min(total, 5.0);
 
   updateTrimDisplay();
   updateTimelineVisuals();
@@ -1313,13 +1318,13 @@ function initVideoTrimmer(totalDuration) {
     let s = parseFloat(sliderStart.value);
     let e = parseFloat(sliderEnd.value);
 
-    // Enforce 0.5s min and 10.0s max for WhatsApp animated stickers
+    // Enforce 0.5s min and 5.0s max for animated stickers
     if (e - s < 0.5) {
       e = Math.min(s + 0.5, total);
       sliderEnd.value = e;
     }
-    if (e - s > 10.0) {
-      e = Math.min(s + 10.0, total);
+    if (e - s > 5.0) {
+      e = Math.min(s + 5.0, total);
       sliderEnd.value = e;
     }
 
@@ -1339,8 +1344,8 @@ function initVideoTrimmer(totalDuration) {
       s = Math.max(e - 0.5, 0);
       sliderStart.value = s;
     }
-    if (e - s > 10.0) {
-      s = Math.max(e - 10.0, 0);
+    if (e - s > 5.0) {
+      s = Math.max(e - 5.0, 0);
       sliderStart.value = s;
     }
 
@@ -1356,7 +1361,7 @@ function initVideoTrimmer(totalDuration) {
   // The trimmed video loops continuously between start and end
   previewVideo.ontimeupdate = () => {
     const s = parseFloat(sliderStart.value) || 0;
-    const e = parseFloat(sliderEnd.value) || Math.min(previewVideo.duration || 10.0, 10.0);
+    const e = parseFloat(sliderEnd.value) || Math.min(previewVideo.duration || 5.0, 5.0);
 
     if (e > s && (previewVideo.currentTime >= e || previewVideo.currentTime < s - 0.2)) {
       previewVideo.currentTime = s;
@@ -1380,12 +1385,12 @@ function initVideoTrimmer(totalDuration) {
 
 function updateTrimDisplay() {
   const s = parseFloat(sliderStart.value) || 0;
-  const e = parseFloat(sliderEnd.value) || 10.0;
+  const e = parseFloat(sliderEnd.value) || 5.0;
   const dur = Math.max(0.1, e - s);
 
   valStart.textContent = `${s.toFixed(1)}s`;
   valEnd.textContent = `${e.toFixed(1)}s`;
-  trimDurationBadge.textContent = `${dur.toFixed(1)}s / 10.0s Max`;
+  trimDurationBadge.textContent = `${dur.toFixed(1)}s / 5.0s Max`;
 }
 
 // Convert to WhatsApp Sticker Action
@@ -1411,7 +1416,7 @@ btnConvert.addEventListener('click', async () => {
     const pack = (packName?.value || 'Sticksy Pack').trim();
 
     const startTime = isVideo ? parseFloat(sliderStart?.value) || 0 : 0;
-    const duration = isVideo ? Math.min(parseFloat(sliderEnd?.value) - startTime, 10.0) : 10.0;
+    const duration = isVideo ? Math.min(parseFloat(sliderEnd?.value) - startTime, 5.0) : 5.0;
 
     // FOR ANIMATED GIFS: Send original media + cropData to backend FFmpeg to preserve multi-frame animation
     const isGif = currentMediaData.type === 'gif';

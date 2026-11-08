@@ -85,7 +85,7 @@ export async function convertStaticImage({ inputPath, outputPath, cropMode = 'fi
 
 /**
  * Converts a video or GIF to a 512x512 animated WhatsApp sticker (under 500 KB limit).
- * Supports up to 10.0s maximum duration (official WhatsApp animated sticker limit).
+ * Supports up to 5.0s maximum duration (official WhatsApp animated sticker limit).
  * Automatically applies multi-pass compression to ensure the sticker STAYS its full duration
  * and never exceeds WhatsApp's strict 500 KB ceiling.
  */
@@ -93,15 +93,15 @@ export async function convertAnimatedMedia({
   inputPath,
   outputPath,
   startTime = 0,
-  duration = 10.0,
+  duration = 5.0,
   fps = 12,
   quality = 35,
   cropMode = 'fit',
   cropData = null,
   metadata = {}
 }) {
-  // WhatsApp maximum animated sticker duration is 10.0 seconds
-  const safeDuration = Math.min(Math.max(parseFloat(duration) || 10.0, 0.5), 10.0);
+  // WhatsApp maximum animated sticker duration is 5.0 seconds
+  const safeDuration = Math.min(Math.max(parseFloat(duration) || 5.0, 0.5), 5.0);
   const safeStart = Math.max(parseFloat(startTime) || 0, 0);
 
   const getFilter = (targetFps, targetScale = 512) => {
@@ -186,14 +186,14 @@ export async function convertAnimatedToGif({
   inputPath,
   outputPath,
   startTime = 0,
-  duration = 3.5,
+  duration = 5.0,
   fps = 11,
   cropMode = 'fit',
   cropData = null,
   metadata = {}
 }) {
-  // Fast, crisp animation (up to 3.5s) for instant loading, small file size, and zero lag
-  const safeDuration = Math.min(Math.max(parseFloat(duration) || 3.5, 0.5), 3.5);
+  // Fast, crisp animation (up to 5.0s maximum sticker limit) for instant loading, small file size, and zero lag
+  const safeDuration = Math.min(Math.max(parseFloat(duration) || 5.0, 0.5), 5.0);
   const safeStart = Math.max(parseFloat(startTime) || 0, 0);
 
   // Smooth 11 FPS, 80 colors, and 384px scale for fast ~1MB download and instant rendering

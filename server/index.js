@@ -332,7 +332,7 @@ app.get('/api/video-filmstrip', async (req, res) => {
     return res.status(400).send('Valid video URL required');
   }
 
-  const duration = Math.max(0.5, parseFloat(req.query.duration) || 10.0);
+  const duration = Math.max(0.5, Math.min(parseFloat(req.query.duration) || 5.0, 5.0));
 
   try {
     const crypto = await import('crypto');
@@ -372,7 +372,7 @@ app.get('/api/video-filmstrip', async (req, res) => {
 app.post('/api/upload-filmstrip', upload.single('media'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const filmstripJpg = `${req.file.path}_filmstrip.jpg`;
-  const duration = Math.max(0.5, parseFloat(req.body.duration) || 10.0);
+  const duration = Math.max(0.5, Math.min(parseFloat(req.body.duration) || 5.0, 5.0));
   const fpsVal = Math.max(0.1, 8 / duration);
   try {
     const { spawn } = await import('child_process');
@@ -412,7 +412,7 @@ app.post('/api/create-sticker', async (req, res) => {
     const {
       url: rawUrl,
       startTime = 0,
-      duration = 10.0,
+      duration = 5.0,
       cropMode = 'fit',
       cropData = null,
       packName = 'Sticksy Pack',
@@ -455,7 +455,7 @@ app.post('/api/create-sticker', async (req, res) => {
         inputPath: downloadedPath,
         outputPath: outputGifPath,
         startTime: parseFloat(startTime) || 0,
-        duration: parseFloat(duration) || 10.0,
+        duration: Math.min(parseFloat(duration) || 5.0, 5.0),
         cropMode,
         cropData: parsedCropData,
         metadata
@@ -527,7 +527,7 @@ app.post('/api/upload-sticker', upload.single('media'), async (req, res) => {
   try {
     const {
       startTime = 0,
-      duration = 10.0,
+      duration = 5.0,
       cropMode = 'fit',
       cropData = null,
       packName = 'Sticksy Pack',
@@ -560,7 +560,7 @@ app.post('/api/upload-sticker', upload.single('media'), async (req, res) => {
         inputPath: uploadedPath,
         outputPath: outputGifPath,
         startTime: parseFloat(startTime) || 0,
-        duration: parseFloat(duration) || 10.0,
+        duration: Math.min(parseFloat(duration) || 5.0, 5.0),
         cropMode,
         cropData: parsedCropData,
         metadata
