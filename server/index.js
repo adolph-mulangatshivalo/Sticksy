@@ -91,7 +91,7 @@ app.use(express.static(path.join(rootDir, 'public'), {
 }));
 
 // Health check endpoint for cloud hosting
-app.get('/health', (req, res) => {
+app.get(['/health', '/healthz'], (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
