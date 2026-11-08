@@ -104,10 +104,14 @@ app.post('/api/inspect', async (req, res) => {
   } catch (err) {
     console.error('Inspect error:', err.message);
     let userMsg = err.message || 'Failed to fetch media.';
-    if (userMsg.includes('404') || userMsg.includes('Not Found')) {
-      userMsg = 'This post/video could not be found or may be private. Please check the link and try another!';
+    if (userMsg.includes('No video formats found') || userMsg.includes('format is not available')) {
+      userMsg = 'No video found at this link. If this is a photo, please make sure the post is public or try another link!';
+    } else if (userMsg.includes('404') || userMsg.includes('Not Found')) {
+      userMsg = 'This post could not be found or may be private. Please check the link and try another!';
     } else if (userMsg.includes('login') || userMsg.includes('sign in')) {
       userMsg = 'This post requires a login to view. Please try a public post or direct link!';
+    } else if (userMsg.includes('yt-dlp') || userMsg.includes('ERROR:')) {
+      userMsg = 'Unable to extract media from this link. Please verify that the post is public and try again.';
     }
     res.status(500).json({ error: userMsg });
   }

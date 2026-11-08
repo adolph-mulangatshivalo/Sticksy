@@ -432,33 +432,114 @@ export async function extractTwitterDirect(url) {
 }
 
 /**
- * Fallback extractor for Pinterest image or video pins.
+ * Fast & reliable extractor for Pinterest video pins, animated GIF pins, and photo pins.
+ * Handles short links (pin.it), shared recipient pages, and extracts high-res media.
  */
-async function extractPinterestDirect(url) {
+export async function extractPinterestDirect(rawUrl) {
   try {
-    const res = await fetch(url, {
+    let targetUrl = rawUrl;
+
+    // 1. Follow shortlink redirects (pin.it/XXXX or /sent/)
+    if (targetUrl.includes('pin.it') || targetUrl.includes('/sent/')) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const headResp = await fetch(targetUrl, {
+          method: 'GET',
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          }
+        });
+        clearTimeout(timeout);
+        if (headResp.url) {
+          targetUrl = headResp.url;
+        }
+      } catch (_) {}
+    }
+
+    // 2. Extract Pin ID if present and query clean canonical page
+    const pinIdMatch = targetUrl.match(/\/pin\/(\d+)/);
+    const pinId = pinIdMatch ? pinIdMatch[1] : null;
+    const fetchUrl = pinId ? `https://www.pinterest.com/pin/${pinId}/` : targetUrl;
+
+    const res = await fetch(fetchUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-      redirect: 'follow'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
     });
     const html = await res.text();
 
-    const ogVideoMatch = html.match(/property="og:video(:secure_url)?"\s+content="([^"]+)"/i) || html.match(/content="([^"]+)"\s+property="og:video(:secure_url)?"/i);
-    const videoTagMatch = html.match(/<video[^>]+src="([^"]+)"/i) || html.match(/"(https:[^"]+v1\.pinimg\.com\/videos\/[^"]+\.mp4)"/i);
-    const videoUrl = (ogVideoMatch && ogVideoMatch[2]) || (videoTagMatch && videoTagMatch[1]) || null;
+    // 3. Title extraction
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    let title = titleMatch ? titleMatch[1].replace(/\s*\|\s*Pinterest.*$/i, '').trim() : 'Pinterest Pin';
 
-    const ogMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) || html.match(/content="([^"]+)"\s+property="og:image"/i);
-    const thumbnail = ogMatch && ogMatch[1] ? ogMatch[1] : null;
+    // 4. Video (MP4) detection
+    const videoTagMatch = html.match(/"(https:[^"]*v1\.pinimg\.com\/videos\/[^"]+\.mp4)"/i) ||
+                          html.match(/"(https:[^"]*\.pinimg\.com\/[^"]+\.mp4)"/i) ||
+                          html.match(/property="og:video(?::secure_url)?"\s+content="([^"]+)"/i);
+    const videoUrl = videoTagMatch ? videoTagMatch[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/') : null;
+
+    // 5. Animated GIF detection on originals
+    const gifMatch = html.match(/"(https:[^"]*i\.pinimg\.com\/originals\/[^"]+\.gif)"/i) ||
+                     html.match(/(https:\/\/i\.pinimg\.com\/originals\/[a-f0-9\/]+\.gif)/i);
+    const gifUrl = gifMatch ? gifMatch[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/') : null;
+
+    // 6. Original high-res photo detection (jpg / png / webp)
+    const origImgMatch = html.match(/"url"\s*:\s*"(https:[^"]*i\.pinimg\.com\/originals\/[^"]+\.(?:jpg|jpeg|png|webp))"/i) ||
+                         html.match(/"(https:[^"]*i\.pinimg\.com\/originals\/[^"]+\.(?:jpg|jpeg|png|webp))"/i) ||
+                         html.match(/(https:\/\/i\.pinimg\.com\/originals\/[a-f0-9\/]+\.(?:jpg|jpeg|png|webp))/i);
+    const origImgUrl = origImgMatch ? origImgMatch[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/') : null;
+
+    // 7. 736x fallback image
+    const img736Match = html.match(/"(https:[^"]*i\.pinimg\.com\/736x\/[^"]+\.(?:jpg|jpeg|png|webp|gif))"/i) ||
+                        html.match(/(https:\/\/i\.pinimg\.com\/736x\/[a-f0-9\/]+\.(?:jpg|jpeg|png|webp|gif))/i);
+    const img736Url = img736Match ? img736Match[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/') : null;
+
+    // 8. OpenGraph image fallback
+    const ogImgMatch = html.match(/property="og:image(?::secure_url)?"\s+content="([^"]+)"/i) ||
+                       html.match(/content="([^"]+)"\s+property="og:image(?::secure_url)?"/i);
+    const ogImgUrl = ogImgMatch ? ogImgMatch[1] : null;
+
+    const thumbnail = origImgUrl || img736Url || ogImgUrl || gifUrl || videoUrl;
 
     if (videoUrl) {
-      return { type: 'video', videoUrl, thumbnail };
+      return {
+        title: title || 'Pinterest Video',
+        thumbnail,
+        videoUrl,
+        type: 'video',
+        duration: 5,
+        platform: { id: 'pinterest', name: 'Pinterest', icon: '📌' }
+      };
     }
+
+    if (gifUrl) {
+      return {
+        title: title || 'Pinterest Animated GIF',
+        thumbnail: gifUrl,
+        videoUrl: gifUrl,
+        type: 'gif',
+        isGif: true,
+        duration: 3.0,
+        platform: { id: 'pinterest', name: 'Pinterest', icon: '📌' }
+      };
+    }
+
     if (thumbnail) {
-      return { type: 'image', thumbnail };
+      return {
+        title: title || 'Pinterest Photo',
+        thumbnail,
+        videoUrl: null,
+        type: 'image',
+        platform: { id: 'pinterest', name: 'Pinterest', icon: '📌' }
+      };
     }
   } catch (e) {
-    // ignore
+    // fallback
   }
   return null;
 }
@@ -720,14 +801,7 @@ export async function inspectMedia(rawUrl) {
   if (platform.id === 'pinterest') {
     const directPin = await extractPinterestDirect(url);
     if (directPin) {
-      return {
-        title: 'Pinterest ' + (directPin.type === 'video' ? 'Video Pin' : 'Image Pin'),
-        thumbnail: directPin.thumbnail,
-        videoUrl: directPin.videoUrl || null,
-        type: directPin.type,
-        duration: directPin.type === 'video' ? 5 : null,
-        platform
-      };
+      return directPin;
     }
     const pinData = await extractPinterestWithPython(url);
     if (pinData) {
@@ -980,11 +1054,17 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     const directPin = await extractPinterestDirect(url);
     if (directPin) {
       if (directPin.videoUrl) {
-        const outPath = path.join(tempDir, `${filePrefix}_input.mp4`);
+        const isGif = directPin.isGif || /\.gif($|\?)/i.test(directPin.videoUrl);
+        const ext = isGif ? 'gif' : 'mp4';
+        const outPath = path.join(tempDir, `${filePrefix}_input.${ext}`);
         await downloadDirectMedia(directPin.videoUrl, outPath);
         return outPath;
       } else if (directPin.thumbnail) {
-        const outPath = path.join(tempDir, `${filePrefix}_input.jpg`);
+        const isPng = /\.png($|\?)/i.test(directPin.thumbnail);
+        const isWebp = /\.webp($|\?)/i.test(directPin.thumbnail);
+        const isGif = /\.gif($|\?)/i.test(directPin.thumbnail);
+        const ext = isPng ? 'png' : (isWebp ? 'webp' : (isGif ? 'gif' : 'jpg'));
+        const outPath = path.join(tempDir, `${filePrefix}_input.${ext}`);
         await downloadDirectMedia(directPin.thumbnail, outPath);
         return outPath;
       }
