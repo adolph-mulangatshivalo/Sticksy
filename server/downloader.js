@@ -253,15 +253,16 @@ export async function extractYouTubeDirect(rawUrl) {
 
     const thumbnail = `https://i.ytimg.com/vi/${videoId}/hq720.jpg`;
 
-    // 2. Fetch progressive stream URL using mobile client extractor args (bypasses bot detection)
+    // 2. Fetch progressive stream URL using embedded player client (bypasses bot detection)
     const streamUrl = await new Promise((resolve) => {
       const proc = spawn(PYTHON_BIN, [
         '-m', 'yt_dlp',
         '--js-runtimes', 'node',
+        '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
         '--no-warnings',
         '--no-playlist',
         '-g',
-        '-f', '18/b[ext=mp4]/best[ext=mp4]/bv*[ext=mp4]+ba[ext=m4a]/best',
+        '-f', 'bv*+ba/b',
         canonicalUrl
       ]);
       let out = '';
@@ -925,6 +926,7 @@ export async function inspectMedia(rawUrl) {
     const proc = spawn(PYTHON_BIN, [
       '-m', 'yt_dlp',
       '--js-runtimes', 'node',
+      '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
       '--dump-single-json',
       '--no-warnings',
       '--no-playlist',
@@ -1208,9 +1210,10 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     const args = [
       '-m', 'yt_dlp',
       '--js-runtimes', 'node',
+      '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
       '--no-playlist',
       '--no-warnings',
-      '-f', 'bv*[height<=720]+ba/b[height<=720]/18/bv*+ba/b',
+      '-f', 'bv*+ba/b',
       '--merge-output-format', 'mp4',
       '-o', outTemplate,
       targetUrl
@@ -1256,9 +1259,10 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
     const args = [
       '-m', 'yt_dlp',
       '--js-runtimes', 'node',
+      '--extractor-args', 'youtube:player_client=android_embedded,tv_embedded',
       '--no-playlist',
       '--no-warnings',
-      '-f', 'bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '-f', 'bv*+ba/b',
       '--merge-output-format', 'mp4',
       '-o', outTemplate,
       url
