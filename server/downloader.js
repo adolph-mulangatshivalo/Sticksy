@@ -1311,7 +1311,7 @@ export async function downloadMedia(rawUrl, tempDir, filePrefix) {
         } catch (_) {}
       }
 
-      args.push('-f', 'bv*+ba/b', '--merge-output-format', 'mp4', '-o', outTemplate, targetUrl);
+      args.push('-f', 'best[height<=720]/bestvideo[height<=720]+bestaudio/best[height<=1080]/best', '--merge-output-format', 'mp4', '-o', outTemplate, targetUrl);
 
       await new Promise((resolve, reject) => {
         const proc = spawn(PYTHON_BIN, args);
