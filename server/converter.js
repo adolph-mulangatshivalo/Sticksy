@@ -6,16 +6,25 @@ import { injectWhatsAppExif } from './exif.js';
 /**
  * Execute an ffmpeg command asynchronously.
  */
-function runFfmpeg(args) {
+function runFfmpeg(args, timeoutMs = 35000) {
   return new Promise((resolve, reject) => {
-    const process = spawn('ffmpeg', args);
+    const finalArgs = args.includes('-nostdin') ? args : ['-nostdin', ...args];
+    const proc = spawn('ffmpeg', finalArgs);
     let stderr = '';
 
-    process.stderr.on('data', (data) => {
+    const timer = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch (_) {}
+      reject(new Error(`FFmpeg timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
+
+    proc.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
-    process.on('close', (code) => {
+    proc.on('close', (code) => {
+      clearTimeout(timer);
       if (code === 0) {
         resolve();
       } else {
@@ -23,7 +32,8 @@ function runFfmpeg(args) {
       }
     });
 
-    process.on('error', (err) => {
+    proc.on('error', (err) => {
+      clearTimeout(timer);
       reject(err);
     });
   });
@@ -217,9 +227,11 @@ export async function convertAnimatedToGif({
 
   const args = [
     '-y',
+    '-nostdin',
+    '-threads', '2',
     '-ss', safeStart.toString(),
-    '-i', inputPath,
     '-t', safeDuration.toString(),
+    '-i', inputPath,
     '-vf', filter,
     '-loop', '0',
     outputPath
@@ -301,25 +313,34 @@ export async function convertStaticToGif({ inputPath, outputPath, cropMode = 'fi
 
   const pngPath = outputPath.replace(/\.gif$/i, '.png');
   const webpPath = outputPath.replace(/\.gif$/i, '.webp');
+  const mp4Path = outputPath.replace(/\.gif$/i, '.mp4');
 
-  // 1. Generate PNG snapshot first with crop/scale in ~60ms
+  // 1. Generate PNG snapshot first with crop/scale in ~30ms
   await runFfmpeg([
     '-y',
+    '-nostdin',
     '-i', inputPath,
     '-vf', filter,
     pngPath
   ]);
 
-  // 2. Generate GIF and WebP directly from the pre-scaled PNG (each takes ~30ms!)
+  // 2. Generate looping 2-frame animated GIF so WhatsApp recognizes it as a Sticker / GIF rather than a static photo!
   await runFfmpeg([
     '-y',
+    '-nostdin',
+    '-loop', '1',
+    '-t', '1.0',
+    '-framerate', '2',
     '-i', pngPath,
+    '-vf', 'fps=2',
+    '-loop', '0',
     outputPath
   ]);
 
   try {
     await runFfmpeg([
       '-y',
+      '-nostdin',
       '-i', pngPath,
       '-c:v', 'libwebp',
       '-quality', '80',
@@ -336,13 +357,35 @@ export async function convertStaticToGif({ inputPath, outputPath, cropMode = 'fi
     console.warn('Static WebP generation warning:', err.message);
   }
 
+  // 3. Background MP4 creation for video fallback
+  setImmediate(async () => {
+    try {
+      await runFfmpeg([
+        '-y',
+        '-nostdin',
+        '-loop', '1',
+        '-t', '1.0',
+        '-i', pngPath,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+        '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+        '-movflags', '+faststart',
+        '-an',
+        mp4Path
+      ]);
+    } catch (_) {}
+  });
+
   const stat = fs.statSync(outputPath);
   return {
     path: outputPath,
     webpPath,
     pngPath,
+    mp4Path,
     size: stat.size,
-    animated: false,
+    animated: true,
+    duration: 1.0,
     format: 'gif'
   };
 }

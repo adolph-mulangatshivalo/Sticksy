@@ -1112,23 +1112,13 @@ async function generateVideoFilmstrip(videoSrc, duration) {
     return;
   }
 
-  // 2. If it's a file upload, use server upload-filmstrip
-  if (selectedFile) {
-    const fd = new FormData();
-    fd.append('media', selectedFile);
-    fd.append('duration', safeDur);
-    fetch('/api/upload-filmstrip', { method: 'POST', body: fd })
-      .then(r => r.ok ? r.blob() : null)
-      .then(blob => {
-        if (!blob || currentGen.abort) return;
-        applyFilmstripImage(URL.createObjectURL(blob));
-      })
-      .catch(() => {
-        runClientCanvasFilmstrip(videoSrc, duration, currentGen, frameElements);
-      });
+  // 2. If it's a file upload, use instant client canvas extraction (0 upload bandwidth, instant 150ms preview)
+  if (currentMediaData?.isFileUpload) {
+    runClientCanvasFilmstrip(videoSrc, duration, currentGen, frameElements);
     return;
   }
 
+  // 3. Fallback for remote video or server filmstrip
   runClientCanvasFilmstrip(videoSrc, duration, currentGen, frameElements);
 }
 

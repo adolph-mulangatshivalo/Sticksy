@@ -1019,6 +1019,7 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: 30;
+  overflow: hidden;
   /* Higher than loading overlay so crop box and handles are 100% visible immediately */
 }
 
@@ -1029,7 +1030,7 @@ body {
 .video-crop-box {
   position: absolute;
   outline: 3px solid var(--vibrant-yellow);
-  box-shadow: 0 0 0 1.5px #000;
+  box-shadow: 0 0 0 1.5px #000, 0 0 0 9999px rgba(0, 0, 0, 0.48);
   pointer-events: auto;
   cursor: move;
   touch-action: none;
@@ -1554,18 +1555,7 @@ body {
 
 /* Ambient Happy Green Glow Beating in Rhythm */
 .hold-aura {
-  position: absolute;
-  top: 130px;
-  left: 50%;
-  width: 250px;
-  height: 250px;
-  transform: translate(-50%, -50%);
-  border-radius: 36px;
-  background: radial-gradient(circle, rgba(37, 211, 102, 0.6) 0%, rgba(37, 211, 102, 0.22) 55%, transparent 75%);
-  filter: blur(16px);
-  pointer-events: none;
-  z-index: 1;
-  animation: aura-heartbeat 1.8s ease-in-out infinite;
+  display: none !important;
 }
 
 @keyframes aura-heartbeat {
@@ -1588,15 +1578,16 @@ body {
   }
 }
 
-/* Sticker Canvas: Dynamic Bezels that adapt to the image/GIF shape with Happy Heartbeat Motion */
+/* Sticker Canvas: Clean 1:1 Square matching WhatsApp sticker display without rounded edges */
 .sticker-canvas {
-  width: auto;
-  height: auto;
-  max-width: min(280px, 85vw);
-  max-height: 280px;
+  width: 200px;
+  height: 200px;
+  max-width: min(200px, 60vw);
+  max-height: min(200px, 60vw);
+  aspect-ratio: 1 / 1;
   border: var(--border-thick);
-  border-radius: var(--radius-card);
-  box-shadow: 4px 4px 0px var(--black), 0 0 16px rgba(37, 211, 102, 0.45);
+  border-radius: 0 !important;
+  box-shadow: 4px 4px 0px var(--black);
   overflow: hidden;
   background-color: #FFFFFF;
   display: inline-flex;
@@ -1606,7 +1597,7 @@ body {
   z-index: 2;
   cursor: pointer;
   touch-action: manipulation;
-  animation: happy-heartbeat 1.8s ease-in-out infinite;
+  animation: none;
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow 0.2s ease,
     border-color 0.2s ease;
@@ -1648,7 +1639,7 @@ body {
 /* Tactile Active Hold State (Pauses heartbeat, grounds into pressed position) */
 .sticker-canvas.holding {
   animation: none;
-  box-shadow: 2px 2px 0px var(--black), 0 0 36px rgba(37, 211, 102, 0.95);
+  box-shadow: 2px 2px 0px var(--black), 0 0 20px rgba(37, 211, 102, 0.7);
   border-color: #25D366;
 }
 
@@ -1656,7 +1647,7 @@ body {
 .sticker-canvas.copied-burst {
   animation: copy-success-bounce 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
   border-color: #25D366;
-  box-shadow: 6px 6px 0px var(--black), 0 0 40px rgba(37, 211, 102, 1);
+  box-shadow: 5px 5px 0px var(--black), 0 0 28px rgba(37, 211, 102, 0.9);
 }
 
 @keyframes copy-success-bounce {
@@ -1675,12 +1666,12 @@ body {
 
 .sticker-img {
   display: block;
-  max-width: min(280px, 85vw);
-  max-height: 280px;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  border-radius: 0;
+  border-radius: 0 !important;
   -webkit-touch-callout: default !important;
   touch-action: auto !important;
   user-select: auto !important;
@@ -1691,14 +1682,15 @@ body {
 
 /* Shimmering Skeleton for Sticker while Rendering (Clean White Neo-Brutalist) */
 .sticker-skeleton {
-  width: 220px;
-  height: 220px;
+  width: 100%;
+  height: 100%;
   position: relative;
   background: #FFFFFF;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 0 !important;
 }
 
 .sticker-skeleton .skeleton-shimmer {
@@ -2200,8 +2192,9 @@ body {
   }
 
   .sticker-canvas {
-    width: min(220px, 65vw);
-    height: min(220px, 65vw);
+    width: min(190px, 58vw);
+    height: min(190px, 58vw);
+    border-radius: 0 !important;
   }
 
   .btn-wa {

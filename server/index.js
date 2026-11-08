@@ -48,7 +48,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50 MB max upload
+  limits: { fileSize: 100 * 1024 * 1024 } // 100 MB max upload
 });
 
 // PWA Manifest and Service Worker headers
@@ -485,7 +485,7 @@ app.post('/api/create-sticker', async (req, res) => {
       id: stickerId,
       sizeBytes: result.size,
       sizeKb: (result.size / 1024).toFixed(1),
-      animated: isVideo,
+      animated: result.animated !== undefined ? result.animated : isVideo,
       duration: result.duration || null,
       format: 'gif',
       viewUrl: `/api/sticker/${stickerId}.gif`,
@@ -586,7 +586,7 @@ app.post('/api/upload-sticker', upload.single('media'), async (req, res) => {
       id: stickerId,
       sizeBytes: result.size,
       sizeKb: (result.size / 1024).toFixed(1),
-      animated: isVideo,
+      animated: result.animated !== undefined ? result.animated : isVideo,
       duration: result.duration || null,
       format: 'gif',
       viewUrl: `/api/sticker/${stickerId}.gif`,
@@ -738,6 +738,17 @@ app.get('/api/sticker/:id', async (req, res) => {
     res.setHeader('Content-Length', fileSize);
     fs.createReadStream(targetPath).pipe(res);
   }
+});
+
+// Multer and general error handling middleware
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ error: `Upload error: ${err.message}. Please upload a file under 100MB.` });
+  }
+  if (err) {
+    return res.status(500).json({ error: err.message || 'Server processing error' });
+  }
+  next();
 });
 
 app.listen(PORT, '0.0.0.0', () => {
