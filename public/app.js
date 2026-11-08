@@ -780,6 +780,8 @@ async function inspectUrl(url) {
   previewCard.classList.remove('hidden');
   if (previewSkeleton) previewSkeleton.classList.remove('hidden');
   imageCropContainer.classList.add('hidden');
+  imageCropContainer.style.opacity = '';
+  imageCropContainer.style.pointerEvents = '';
   videoTrimContainer.classList.add('hidden');
   if (studioResultView) studioResultView.classList.add('hidden');
   if (studioEditorView) studioEditorView.classList.remove('hidden');
@@ -888,6 +890,8 @@ function displayPreview(info) {
   if (info.type === 'video') {
     // 1. SETUP VIDEO TRIMMER
     imageCropContainer.classList.add('hidden');
+    imageCropContainer.style.opacity = '';
+    imageCropContainer.style.pointerEvents = '';
     if (previewSkeleton) previewSkeleton.classList.remove('hidden');
     videoTrimContainer.classList.add('hidden');
     previewCard.classList.remove('hidden');
@@ -994,8 +998,12 @@ function displayPreview(info) {
     // 2. SETUP IMAGE OR GIF CROPPER (With Freeform & 1:1 Square Crop)
     videoTrimContainer.classList.add('hidden');
     if (previewSkeleton) previewSkeleton.classList.remove('hidden');
-    imageCropContainer.classList.add('hidden');
     previewCard.classList.remove('hidden');
+
+    // Keep container in layout so Cropper.js has exact bounding rect, but hidden via opacity so naked image NEVER flashes without cropper!
+    imageCropContainer.classList.remove('hidden');
+    imageCropContainer.style.opacity = '0';
+    imageCropContainer.style.pointerEvents = 'none';
 
     // Use proxy for URL-based images to allow full CORS canvas export
     let imgSrc = info.previewBlobUrl || info.thumbnail || '';
@@ -1008,17 +1016,23 @@ function displayPreview(info) {
     } else {
       cropperImage.crossOrigin = 'anonymous';
     }
-    cropperImage.src = imgSrc;
+
+    let cropperRevealed = false;
+    const revealCropperUi = () => {
+      if (cropperRevealed) return;
+      cropperRevealed = true;
+      if (previewSkeleton) previewSkeleton.classList.add('hidden');
+      imageCropContainer.style.opacity = '1';
+      imageCropContainer.style.pointerEvents = 'auto';
+      autoScrollToCropper();
+    };
 
     cropperImage.onerror = () => {
       console.warn('Image load error on cropper');
-      if (previewSkeleton) previewSkeleton.classList.add('hidden');
-      imageCropContainer.classList.remove('hidden');
+      revealCropperUi();
     };
 
-    cropperImage.onload = () => {
-      if (previewSkeleton) previewSkeleton.classList.add('hidden');
-      imageCropContainer.classList.remove('hidden');
+    const initCropper = () => {
       if (cropperInstance) cropperInstance.destroy();
 
       // Initialize Cropper.js
@@ -1036,6 +1050,7 @@ function displayPreview(info) {
         cropBoxResizable: true,
         toggleDragModeOnDblclick: false,
         ready() {
+          console.log('[Cropper] ready event fired, revealing cropper and image together');
           if (activeCropRatio === 'free') {
             // Guarantee it covers the full dimensions of the picture
             const canvasData = cropperInstance.getCanvasData();
@@ -1046,18 +1061,26 @@ function displayPreview(info) {
               height: canvasData.height
             });
           }
-          autoScrollToCropper();
+          // The cropper is 100% rendered and ready: reveal now so cropper is ALWAYS there!
+          revealCropperUi();
         }
       });
       window.cropper = cropperInstance;
     };
 
+    cropperImage.onload = () => {
+      initCropper();
+    };
+
+    cropperImage.src = imgSrc;
+
+    if (cropperImage.complete && cropperImage.naturalWidth > 0) {
+      initCropper();
+    }
+
     // Safety fallback: only if image load stalls completely after 4s
     setTimeout(() => {
-      if (previewSkeleton && !previewSkeleton.classList.contains('hidden')) {
-        previewSkeleton.classList.add('hidden');
-        imageCropContainer.classList.remove('hidden');
-      }
+      revealCropperUi();
     }, 4000);
   }
 
@@ -1863,6 +1886,8 @@ btnCreateAnother.addEventListener('click', () => {
   selectedFile = null;
 
   previewCard.classList.add('hidden');
+  imageCropContainer.style.opacity = '';
+  imageCropContainer.style.pointerEvents = '';
   if (studioResultView) studioResultView.classList.add('hidden');
   if (studioEditorView) studioEditorView.classList.remove('hidden');
   if (studioHeaderResult) studioHeaderResult.classList.add('hidden');
