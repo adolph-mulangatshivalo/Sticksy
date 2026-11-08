@@ -1655,7 +1655,7 @@ function displayResult(sticker) {
         currentStickerData.cachedGifBlob = await gifResp.blob();
         console.log('[Sticker] GIF blob cached (' + currentStickerData.cachedGifBlob.size + ' bytes)');
         const localBlobUrl = URL.createObjectURL(currentStickerData.cachedGifBlob);
-        resultStickerImg.src = localBlobUrl;
+        resultStickerImg.src = `${localBlobUrl}#stickers.gif`;
       }
     } catch (e) {
       console.warn('Background GIF blob caching warning:', e);
@@ -1702,46 +1702,17 @@ async function copyGifToClipboard() {
     }
   }
 
-  let copied = false;
-  // Modern Async Clipboard API (Direct single image/gif write — zero duplicate HTML snippet!)
+  // Modern Async Clipboard API: pure image/gif write (never downgrade to PNG!)
   if (navigator.clipboard && window.ClipboardItem && gifBlob) {
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'image/gif': gifBlob })]);
-      copied = true;
       console.log('[Clipboard] Copied pure animated GIF via Async Clipboard API');
     } catch (errA) {
-      console.warn('[Clipboard] Async write image/gif notice:', errA.message);
-      try {
-        if (gifBlob.type === 'image/png') {
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': gifBlob })]);
-          copied = true;
-        }
-      } catch (_) {}
+      console.warn('[Clipboard] Async write notice:', errA.message);
     }
   }
 
-  if (copied) {
-    if (stickerCanvasContainer) {
-      stickerCanvasContainer.classList.add('copied-burst');
-      setTimeout(() => stickerCanvasContainer.classList.remove('copied-burst'), 1200);
-    }
-    if (holdCallout) {
-      holdCallout.classList.add('success-copied');
-    }
-    if (calloutText) {
-      calloutText.textContent = 'GIF copied! Tap below to open WhatsApp';
-    }
-    showAlert('GIF copied to clipboard! Tap Open WhatsApp below to paste.');
-    setTimeout(() => {
-      if (holdCallout) holdCallout.classList.remove('success-copied');
-      if (calloutText) {
-        calloutText.textContent = 'Hold the GIF and tap Copy image';
-      }
-    }, 5000);
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
 // Helper: Launch native WhatsApp application (Android direct app launcher intent, iOS & Desktop whatsapp://)
@@ -1811,16 +1782,6 @@ if (stickerCanvasContainer) {
 
   stickerCanvasContainer.addEventListener('mouseup', triggerHoldVisualsEnd);
   stickerCanvasContainer.addEventListener('mouseleave', triggerHoldVisualsEnd);
-}
-
-// Tap on Callout to Copy Directly
-if (holdCallout) {
-  holdCallout.addEventListener('click', async () => {
-    const ok = await copyGifToClipboard();
-    if (!ok) {
-      showAlert('Press and hold the GIF above, then tap Copy image.');
-    }
-  });
 }
 
 
